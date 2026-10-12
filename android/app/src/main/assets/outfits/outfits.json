@@ -1,0 +1,62 @@
+[
+ {
+  "key": "strawberry_hat",
+  "name": "草莓小帽",
+  "price": 70,
+  "category": "帽子"
+ },
+ {
+  "key": "bow",
+  "name": "蝴蝶结",
+  "price": 40,
+  "category": "发饰"
+ },
+ {
+  "key": "scarf",
+  "name": "毛线围巾",
+  "price": 90,
+  "category": "围巾"
+ },
+ {
+  "key": "glasses",
+  "name": "圆框眼镜",
+  "price": 80,
+  "category": "眼镜"
+ },
+ {
+  "key": "nightcap",
+  "name": "睡帽",
+  "price": 80,
+  "category": "帽子"
+ },
+ {
+  "key": "rain_hat",
+  "name": "小雨帽",
+  "price": 100,
+  "category": "帽子"
+ },
+ {
+  "key": "chef_hat",
+  "name": "厨师帽",
+  "price": 120,
+  "category": "帽子"
+ },
+ {
+  "key": "sakura_clip",
+  "name": "樱花发夹",
+  "price": 50,
+  "category": "发饰"
+ },
+ {
+  "key": "cape",
+  "name": "超人小披风",
+  "price": 200,
+  "category": "披风"
+ },
+ {
+  "key": "santa_hat",
+  "name": "圣诞帽",
+  "price": 150,
+  "category": "帽子"
+ }
+]

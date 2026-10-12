@@ -1,0 +1,249 @@
+{
+ "key": "dawn_cottage",
+ "name": "清晨·春日小屋",
+ "w": 240,
+ "h": 166,
+ "spots": [
+  [
+   118,
+   152,
+   1.0
+  ],
+  [
+   80,
+   160,
+   1.0
+  ],
+  [
+   150,
+   140,
+   0.9
+  ]
+ ],
+ "tint": [
+  1.0,
+  0.97,
+  0.97
+ ],
+ "shadow": "#46503030",
+ "text": "dark",
+ "items": [
+  {
+   "type": "image",
+   "src": "sky.png"
+  },
+  {
+   "type": "sun",
+   "src": "sun.png",
+   "path": [
+    [
+     64,
+     104
+    ],
+    [
+     70,
+     50
+    ],
+    [
+     96,
+     22
+    ]
+   ],
+   "hours": [
+    5,
+    9
+   ]
+  },
+  {
+   "type": "drift",
+   "src": "cloud0.png",
+   "x": 20,
+   "y": 22,
+   "speed": 2.2,
+   "wrap": [
+    -50,
+    250
+   ]
+  },
+  {
+   "type": "drift",
+   "src": "cloud1.png",
+   "x": 150,
+   "y": 12,
+   "speed": 1.5,
+   "wrap": [
+    -50,
+    250
+   ]
+  },
+  {
+   "type": "drift",
+   "src": "cloud2.png",
+   "x": 96,
+   "y": 40,
+   "speed": 1.8,
+   "wrap": [
+    -50,
+    250
+   ]
+  },
+  {
+   "type": "drift",
+   "src": "bird.png",
+   "x": 10,
+   "y": 34,
+   "speed": 9,
+   "wrap": [
+    -20,
+    260
+   ],
+   "bob": [
+    2,
+    1.4
+   ]
+  },
+  {
+   "type": "drift",
+   "src": "bird2.png",
+   "x": 0,
+   "y": 42,
+   "speed": 8,
+   "wrap": [
+    -30,
+    270
+   ],
+   "bob": [
+    2,
+    1.7
+   ]
+  },
+  {
+   "type": "image",
+   "src": "back.png"
+  },
+  {
+   "type": "timed",
+   "src": "window_lit.png",
+   "on": [
+    17,
+    6.6
+   ],
+   "fade": 40
+  },
+  {
+   "type": "particles",
+   "kind": "smoke",
+   "n": 10,
+   "area": [
+    198,
+    18,
+    210,
+    46
+   ],
+   "speed": -6,
+   "wind": 3,
+   "colors": [
+    "#FFFFFF",
+    "#E8E8F2"
+   ],
+   "seed": 4
+  },
+  {
+   "type": "sparkles",
+   "speed": 1.6,
+   "pts": [
+    [
+     59,
+     49,
+     1.56,
+     "#FFFFFF",
+     2
+    ],
+    [
+     107,
+     23,
+     4.29,
+     "#FFF59F",
+     2
+    ],
+    [
+     171,
+     36,
+     0.84,
+     "#FFC4EE",
+     3
+    ],
+    [
+     95,
+     14,
+     4.31,
+     "#FFF59F",
+     3
+    ],
+    [
+     42,
+     34,
+     5.29,
+     "#FFF59F",
+     2
+    ],
+    [
+     107,
+     62,
+     0.38,
+     "#FFC4EE",
+     2
+    ]
+   ]
+  },
+  {
+   "type": "walker",
+   "src": "butterfly.png",
+   "n": 4,
+   "y": 122,
+   "speed": 7,
+   "range": [
+    40,
+    200
+   ],
+   "fps": 8
+  },
+  {
+   "type": "walker",
+   "src": "butterfly.png",
+   "n": 4,
+   "y": 100,
+   "speed": 5,
+   "range": [
+    110,
+    230
+   ],
+   "fps": 7
+  },
+  {
+   "type": "image",
+   "src": "front.png",
+   "z": "front"
+  },
+  {
+   "type": "particles",
+   "kind": "petal",
+   "n": 18,
+   "area": [
+    60,
+    -4,
+    240,
+    166
+   ],
+   "speed": 10,
+   "wind": -8,
+   "colors": [
+    "#FFB7D5",
+    "#FFD9E8",
+    "#F28AB8"
+   ],
+   "seed": 2,
+   "z": "front"
+  }
+ ]
+}

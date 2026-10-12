@@ -1,0 +1,145 @@
+[
+ {
+  "key": "rice_ball",
+  "name": "饭团",
+  "kind": "food",
+  "satiety": 24,
+  "hydration": 0,
+  "stamina": 0,
+  "price": 4,
+  "favorite": [
+   "hamster",
+   "swan"
+  ]
+ },
+ {
+  "key": "dried_fish",
+  "name": "小鱼干",
+  "kind": "food",
+  "satiety": 26,
+  "hydration": 0,
+  "stamina": 0,
+  "price": 5,
+  "favorite": [
+   "cat"
+  ]
+ },
+ {
+  "key": "carrot",
+  "name": "胡萝卜",
+  "kind": "food",
+  "satiety": 15,
+  "hydration": 0,
+  "stamina": 0,
+  "price": 2,
+  "favorite": [
+   "guinea_pig",
+   "bunny",
+   "turtle"
+  ]
+ },
+ {
+  "key": "apple",
+  "name": "苹果",
+  "kind": "food",
+  "satiety": 18,
+  "hydration": 0,
+  "stamina": 0,
+  "price": 3,
+  "favorite": [
+   "sugar_glider",
+   "pig",
+   "chinchilla"
+  ]
+ },
+ {
+  "key": "bone_biscuit",
+  "name": "骨头饼干",
+  "kind": "food",
+  "satiety": 28,
+  "hydration": 0,
+  "stamina": 0,
+  "price": 5,
+  "favorite": [
+   "dog"
+  ]
+ },
+ {
+  "key": "worm_gummy",
+  "name": "虫虫软糖",
+  "kind": "food",
+  "satiety": 25,
+  "hydration": 0,
+  "stamina": 0,
+  "price": 6,
+  "favorite": [
+   "snake",
+   "lizard",
+   "hedgehog",
+   "tarantula",
+   "clownfish"
+  ]
+ },
+ {
+  "key": "strawberry_cake",
+  "name": "草莓蛋糕",
+  "kind": "food",
+  "satiety": 38,
+  "hydration": 0,
+  "stamina": 8,
+  "price": 12,
+  "favorite": []
+ },
+ {
+  "key": "water",
+  "name": "清水",
+  "kind": "drink",
+  "satiety": 0,
+  "hydration": 18,
+  "stamina": 0,
+  "price": 1,
+  "favorite": []
+ },
+ {
+  "key": "milk",
+  "name": "牛奶",
+  "kind": "drink",
+  "satiety": 0,
+  "hydration": 20,
+  "stamina": 2,
+  "price": 3,
+  "favorite": []
+ },
+ {
+  "key": "honey_water",
+  "name": "蜂蜜水",
+  "kind": "drink",
+  "satiety": 0,
+  "hydration": 22,
+  "stamina": 3,
+  "price": 4,
+  "favorite": [
+   "sugar_glider"
+  ]
+ },
+ {
+  "key": "orange_juice",
+  "name": "鲜榨果汁",
+  "kind": "drink",
+  "satiety": 0,
+  "hydration": 25,
+  "stamina": 4,
+  "price": 5,
+  "favorite": []
+ },
+ {
+  "key": "hot_cocoa",
+  "name": "热可可",
+  "kind": "drink",
+  "satiety": 0,
+  "hydration": 24,
+  "stamina": 6,
+  "price": 6,
+  "favorite": []
+ }
+]
