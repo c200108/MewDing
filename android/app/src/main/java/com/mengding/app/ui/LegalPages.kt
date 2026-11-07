@@ -1,8 +1,14 @@
 package com.mengding.app.ui
 
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.mengding.app.logic.Legal
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -55,34 +61,110 @@ private fun LicenseGroup(title: String, items: List<Lic>) {
     }
 }
 
-/** 我的 → 关于萌叮 → 用户协议 */
+/** 我的 → 关于萌叮 → 用户服务协议 */
 @Composable
 fun TermsPage() {
-    PageScaffold("用户协议") {
-        Text("更新日期：2026 年 10 月 21 日", fontSize = 12.sp, color = P.sub)
-        Gap()
-        TermsSection("一、关于本软件", listOf(
-            "萌叮是一款陪伴你按时喝水、吃饭、睡觉的桌面宠物软件。使用本软件即表示你同意本协议。",
-            "本软件目前为给亲友试用的早期版本，功能和内容可能随版本调整。",
-        ))
-        TermsSection("二、原创素材的版权", listOf(
-            "本项目中的原创素材，包括但不限于宠物形象与动画、场景地图与美术、界面图标、服装道具、背景音乐、文案与软件代码，版权归萌叮项目作者所有。",
-            "未经作者书面许可，任何人不得复制、修改、提取、传播或用于商业用途，也不得将这些素材用于训练模型或二次发布。",
-            "如需使用，请先通过「关于萌叮 → 联系作者」取得许可，并在使用时注明出处。",
-            "本软件中使用的第三方开源项目和开源素材，按其各自的开源许可使用，详见「开源许可」页面。",
-        ))
-        TermsSection("三、你的数据", listOf(
-            "你的记录（喝水、吃饭、经期、便签等）只保存在你的手机上，不会上传到服务器。卸载软件或清除数据后将无法恢复，请按需使用「备份」功能。",
-            "本地天气、计步等功能只在你授权后使用对应权限。",
-        ))
-        TermsSection("四、免责说明", listOf(
-            "经期预测、健康提醒仅供参考，不构成医疗建议；身体不适请及时就医。",
-            "因手机系统省电、权限关闭等原因导致的提醒延迟或失效，我们会尽力改进，但不承担由此产生的责任。",
-        ))
-        TermsSection("五、协议的变更", listOf(
-            "本协议可能随版本更新而调整，更新后会在本页显示新的日期。继续使用即视为同意更新后的协议。",
-        ))
+    PageScaffold("用户服务协议") { TermsBody() }
+}
+
+/** 我的 → 关于萌叮 → 隐私政策：assets/legal/privacy.html 静态网页（docs/legal/privacy.html 是同一份，以后挂成公开链接） */
+@Composable
+fun PrivacyPolicyPage() {
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+    ) {
+        MdTopBar("隐私政策", { Nav.back() })
+        PrivacyWebView(Modifier.fillMaxSize())
     }
+}
+
+private fun hex(c: androidx.compose.ui.graphics.Color) = "#%06X".format(c.toArgb() and 0xFFFFFF)
+
+/**
+ * 本地静态网页：禁用 JS、禁止联网加载任何资源；网页里的外链交给系统浏览器打开。
+ * 打开前把当前界面风格的颜色和深浅色注入进去，四种风格看起来都和 App 一致。
+ */
+@Composable
+fun PrivacyWebView(modifier: Modifier = Modifier) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val bg = P.cream; val ink = P.ink; val sub = P.sub; val line = P.line; val accent = P.mintDeep
+    val card = mdSurface()
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val html = androidx.compose.runtime.remember(bg, ink, sub, line, accent, card, dark) {
+        val raw = runCatching { ctx.assets.open("legal/privacy.html").bufferedReader().use { it.readText() } }
+            .getOrDefault("<p>隐私政策加载失败</p>")
+        val vars = "<style>:root,:root[data-theme]{--bg:${hex(bg)};--card:${hex(card)};--ink:${hex(ink)};--sub:${hex(sub)};" +
+            "--line:${hex(line)};--accent:${hex(accent)};}</style>"
+        raw.replaceFirst("<html lang=\"zh-CN\">", "<html lang=\"zh-CN\" data-theme=\"${if (dark) "dark" else "light"}\">")
+            .replaceFirst("</head>", "$vars</head>")
+    }
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { c ->
+            android.webkit.WebView(c).apply {
+                setBackgroundColor(bg.toArgb())
+                settings.javaScriptEnabled = false
+                settings.blockNetworkLoads = true
+                settings.allowFileAccess = false
+                settings.allowContentAccess = false
+                settings.setGeolocationEnabled(false)
+                webViewClient = object : android.webkit.WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: android.webkit.WebView, req: android.webkit.WebResourceRequest): Boolean {
+                        val u = req.url
+                        if (u.scheme == "http" || u.scheme == "https" || u.scheme == "mailto") {
+                            runCatching { c.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, u)) }
+                            return true
+                        }
+                        return u.fragment == null   // 页内目录跳转（#s1）放行，其他一律拦下
+                    }
+                }
+                loadDataWithBaseURL("file:///android_asset/legal/", html, "text/html", "utf-8", null)
+            }
+        },
+        update = { w ->
+            if (w.tag != html) { w.tag = html; w.setBackgroundColor(bg.toArgb()); w.loadDataWithBaseURL("file:///android_asset/legal/", html, "text/html", "utf-8", null) }
+        },
+        modifier = modifier,
+    )
+}
+
+@Composable
+fun ColumnScope.TermsBody() {
+    Text("更新日期：${Legal.UPDATED}　生效日期：${Legal.EFFECTIVE}", fontSize = 12.sp, color = P.sub)
+    Gap()
+    TermsSection("一、协议双方", listOf(
+        "本协议是你与萌叮开发者（${Legal.DEVELOPER}，以下简称「我们」）之间关于使用萌叮软件的约定。",
+        "请你在使用前仔细阅读本协议和《隐私政策》。你点「同意并继续」即表示已阅读并同意；如果不同意，可以点「不同意」，萌叮会退出且不会收集任何信息。",
+        "未满 14 周岁的未成年人，请在父母或其他监护人陪同下阅读，并在监护人同意后使用。",
+    ))
+    TermsSection("二、关于本软件", listOf(
+        "萌叮是一款陪伴你按时喝水、吃饭、睡觉的桌面宠物软件，包括提醒、宠物养成、便签、经期记录、小游戏等功能。",
+        "本软件目前为早期版本，功能和内容可能随版本调整。",
+    ))
+    TermsSection("三、账号与注销", listOf(
+        "萌叮不需要注册，也不需要手机号或第三方账号登录。你的「账号」就是这台手机上的本机档案（昵称、宠物、记录、设置）。",
+        "你可以随时在「我的 → 注销账号」注销。注销会彻底删除本机全部数据，并停止所有提醒和常驻服务，删除后无法恢复。",
+        "萌叮目前没有服务器，云端不保存你的任何数据，注销后无需另外处理云端。如以后上线云同步，会另行征得你的同意，注销时一并删除云端数据。",
+    ))
+    TermsSection("四、你的数据", listOf(
+        "你的记录（喝水、吃饭、睡觉、经期、便签等）只保存在你的手机上，不会上传。卸载软件、清除数据或注销账号后将无法恢复，请按需使用「备份」功能。",
+        "具体收集了什么、怎么用、怎么保护，见《隐私政策》。",
+    ))
+    TermsSection("五、原创素材的版权", listOf(
+        "本项目中的原创素材，包括但不限于宠物形象与动画、场景地图与美术、界面图标、服装道具、背景音乐、文案与软件代码，版权归萌叮开发者所有。",
+        "未经书面许可，任何人不得复制、修改、提取、传播或用于商业用途，也不得将这些素材用于训练模型或二次发布。如需使用，请先通过「关于萌叮 → 联系作者」取得许可。",
+        "本软件中使用的第三方开源项目和开源素材，按其各自的开源许可使用，详见「开源许可」页面。",
+    ))
+    TermsSection("六、使用规范", listOf(
+        "请合法使用本软件，不得对本软件进行反向工程、破解、植入恶意代码，或利用本软件从事违法违规活动。",
+    ))
+    TermsSection("七、免责说明", listOf(
+        "经期预测、健康提醒仅供参考，不构成医疗建议；身体不适请及时就医。",
+        "因手机系统省电、权限关闭等原因导致的提醒延迟或失效，我们会尽力改进，但不承担由此产生的责任。",
+    ))
+    TermsSection("八、协议的变更", listOf(
+        "本协议可能随版本更新而调整。有实质变化时，你下次打开萌叮会再次弹窗请你确认，同意后才能继续使用。",
+    ))
+    TermsSection("九、联系我们", Legal.CONTACTS.map { (k, v) -> "$k：$v" })
 }
 
 @Composable
@@ -96,27 +178,20 @@ private fun TermsSection(title: String, lines: List<String>) {
     }
 }
 
-/** 我的 → 关于萌叮 → 联系作者（联系方式先占位，作者填好后替换 AUTHOR_CONTACTS） */
-private val AUTHOR_CONTACTS = listOf(
-    "作者" to "（待填写）",
-    "邮箱" to "（待填写）",
-    "微信 / QQ" to "（待填写）",
-    "小红书 / 微博" to "（待填写）",
-)
-
+/** 我的 → 关于萌叮 → 联系作者（联系方式集中在 Legal.CONTACTS） */
 @Composable
 fun ContactPage() {
     PageScaffold("联系作者") {
-        Text("有问题反馈、合作或想使用本项目原创素材，都可以通过下面的方式联系作者。", fontSize = 13.sp, color = P.sub)
+        Text("有问题反馈、个人信息相关请求、合作或想使用本项目原创素材，都可以通过下面的方式联系作者。", fontSize = 13.sp, color = P.sub)
         Gap()
         MCard {
-            AUTHOR_CONTACTS.forEachIndexed { i, (k, v) ->
+            Legal.CONTACTS.forEachIndexed { i, (k, v) ->
                 if (i > 0) Gap(10.dp)
                 Text(k, fontSize = 12.sp, color = P.sub)
                 Text(v, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = P.ink)
             }
         }
         Gap()
-        Text("申请使用原创素材时，请说明用途和使用范围；未经许可请勿使用，详见「用户协议」。", fontSize = 12.sp, color = P.sub)
+        Text("申请使用原创素材时，请说明用途和使用范围；未经许可请勿使用，详见「用户服务协议」。", fontSize = 12.sp, color = P.sub)
     }
 }

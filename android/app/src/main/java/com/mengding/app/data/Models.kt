@@ -87,6 +87,10 @@ data class Settings(
     val petRunDir: String = "auto",
     /** 绕边方向：cw 顺时针；ccw 逆时针 */
     val petLapDir: String = "cw",
+    /** 桌面宠物定时随机动一动（跑一趟、蹦一蹦、打滚转圈）；关着时它只在「陪我走路」+ 你在走路时才跑 */
+    val petRandomMove: Boolean = false,
+    /** 随机动一动的间隔（分钟），用户自己选 */
+    val petRandomEveryMin: Int = 10,
     /** 小游戏的音效和背景音乐 */
     val gameSound: Boolean = true,
     /** 首页 HD-2D 小镇的背景音乐（场景右下角小喇叭开关） */

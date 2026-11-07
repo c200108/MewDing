@@ -159,6 +159,13 @@ object UnityHost {
 
     fun say(text: String) = send(op("say").put("text", text))
 
+    /** 小镇里的对话气泡换成「气泡样式」选的那一套（App 里同一套皮肤；同一套只发一次） */
+    private var sentSkin = ""
+    fun bubbleSkin(ctx: android.content.Context, key: String) {
+        if (!ready || key == sentSkin) return
+        com.mengding.app.ui.BubbleSkins.unityPayload(ctx, key)?.let { send(it); sentSkin = key }
+    }
+
     fun coins(delta: Int, id: String) { if (delta > 0) send(op("coins").put("id", id).put("delta", delta)) }
 
     /** 展开全场景：「更多 ›」、「宠物部屋」、卧室房门都走这里 */

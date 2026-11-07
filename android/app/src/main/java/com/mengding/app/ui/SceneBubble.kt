@@ -187,6 +187,44 @@ object BubbleSkins {
         cache.getOrPut(key) { runCatching { load(ctx, key) }.getOrNull() ?: CreamSkin }
     }
 
+    /**
+     * 给 Unity 小镇用的同一套气泡（op bubble_skin）：框图 + 朝下的尾巴图（PNG base64）和尺寸参数。
+     * 有渐变底色的皮肤先把底色按框图原尺寸画进框图里（Unity 那边直接九宫格拉伸）。读不到返回 null（Unity 保持默认样子）。
+     */
+    fun unityPayload(ctx: android.content.Context, key: String): org.json.JSONObject? = runCatching {
+        val dir = "bubbles/$key"
+        val j = org.json.JSONObject(ctx.assets.open("$dir/skin.json").bufferedReader().readText())
+        fun bmp(name: String) = ctx.assets.open("$dir/$name").use {
+            android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inScaled = false })!!
+        }
+        fun b64(b: Bitmap): String {
+            val o = java.io.ByteArrayOutputStream(); b.compress(Bitmap.CompressFormat.PNG, 100, o)
+            return android.util.Base64.encodeToString(o.toByteArray(), android.util.Base64.NO_WRAP)
+        }
+        val src = bmp(j.optString("body", "body.webp"))
+        val body = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        val c = Canvas(body)
+        j.optJSONObject("fill")?.let { f ->
+            val fr = f.getJSONArray("frame"); val half = f.optInt("stroke", 3) / 2f
+            val r = RectF(fr.getInt(0) + half, fr.getInt(1) + half, src.width - fr.getInt(2) - half, src.height - fr.getInt(3) - half)
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = LinearGradient(0f, r.top, 0f, r.bottom, android.graphics.Color.parseColor(f.getString("top")),
+                    android.graphics.Color.parseColor(f.getString("bottom")), Shader.TileMode.CLAMP)
+            }
+            val rad = (j.optDouble("radius", 13.0) / j.getDouble("scale")).toFloat()
+            c.drawRoundRect(r, rad, rad, p)
+        }
+        c.drawBitmap(src, 0f, 0f, null)
+        val tails = j.getJSONObject("tails")
+        val tk = if (tails.has("down_l")) "down_l" else tails.keys().next()
+        val t = tails.getJSONObject(tk)
+        org.json.JSONObject().put("op", "bubble_skin").put("body", b64(body)).put("tail", b64(bmp(t.getString("file"))))
+            .put("tailRoot", org.json.JSONArray().put(t.getJSONArray("root").getDouble(0)).put(t.getJSONArray("root").getDouble(1)))
+            .put("insets", j.getJSONArray("insets")).put("scale", j.getDouble("scale"))
+            .put("padH", j.optDouble("padH", 11.0)).put("padV", j.optDouble("padV", 7.0)).put("tailLen", j.optDouble("tailLen", 8.0))
+            .put("textColor", j.optString("textColor", "#493347")).put("pixel", j.optBoolean("pixel", false))
+    }.getOrNull()
+
     private fun load(ctx: android.content.Context, key: String): BubbleSkin {
         val dir = "bubbles/$key"
         val j = org.json.JSONObject(ctx.assets.open("$dir/skin.json").bufferedReader().readText())
@@ -274,12 +312,13 @@ class SceneBubble {
             return
         }
         text!!
-        tp.textSize = 13f * sp
+        tp.textSize = 12f * sp
         tp.color = skin.textColor
         tp.typeface = AppFonts.typeface ?: android.graphics.Typeface.DEFAULT
         val emoSize = if (emote != null) EMOTE_DP * d else 0f
-        // 最宽约 3 个宠物身宽，但不小于 120dp、不超过可放范围的 62%；带表情时文字再让出表情那一块
-        val maxW = min(max(petW * 3f, 120f * d), bounds.width() * .62f)
+        // 气泡自适应、比宠物稍小一点的感觉：最宽约 2 个宠物身宽，但不小于 96dp（太窄一行只放得下两三个字）、不超过可放范围的 55%；
+        // 带表情时文字再让出表情那一块
+        val maxW = min(max(petW * 2f, 96f * d), bounds.width() * .55f)
         val maxText = max(40f * d, maxW - 2 * skin.padH * d - (if (emote != null) emoSize + EMOTE_GAP_DP * d else 0f))
         val k = "$text|${maxText.toInt()}|${tp.textSize}"
         if (k != key) {
@@ -346,6 +385,6 @@ class SceneBubble {
 
     private fun build(text: String, width: Int, d: Float): StaticLayout =
         StaticLayout.Builder.obtain(text, 0, text.length, tp, width.coerceAtLeast(1))
-            .setAlignment(Layout.Alignment.ALIGN_NORMAL).setLineSpacing(2f * d, 1f).setIncludePad(false)
+            .setAlignment(Layout.Alignment.ALIGN_CENTER).setLineSpacing(0f, 1.1f).setIncludePad(false)
             .setMaxLines(3).setEllipsize(TextUtils.TruncateAt.END).build()
 }

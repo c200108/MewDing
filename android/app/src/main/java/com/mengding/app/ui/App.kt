@@ -63,15 +63,19 @@ private var splashDone = false
 @Composable
 fun AppRoot(act: MainActivity) {
     val cfg by Store.config.collectAsState()
+    val consent by com.mengding.app.logic.Consent.accepted.collectAsState()
+    val needConsent = com.mengding.app.logic.Consent.needsPrompt(consent)
     var splash by remember { mutableStateOf(!splashDone) }
     Box(Modifier.fillMaxSize().background(P.cream)) {
         when {
+            // 合规：首次启动 / 协议更新先弹协议，同意之前什么都不做
+            needConsent -> if (!splash) ConsentGate(act)
             !cfg.profile.onboarded -> Onboarding()
             cfg.settings.privacyLock && !act.unlocked -> LockScreen { act.authenticate() }
             else -> Main()
         }
         // 解锁徽章的大徽章动画盖在最上面（启动页放完之后）
-        if (!splash && cfg.profile.onboarded) { CoachLayer(); BadgeUnlockLayer() }
+        if (!splash && !needConsent && cfg.profile.onboarded) { CoachLayer(); BadgeUnlockLayer() }
         MdToastHost()
         if (splash) SplashScreen { splashDone = true; splash = false }
     }
@@ -166,6 +170,8 @@ private fun SubPage(page: String) {
         page == "about" -> AboutPage()
         page == "licenses" -> LicensesPage()
         page == "terms" -> TermsPage()
+        page == "policy" -> PrivacyPolicyPage()
+        page == "erase" -> EraseAccountPage()
         page == "contact" -> ContactPage()
         page == "adopt" -> AdoptPage()
         page == "font" -> FontPage()

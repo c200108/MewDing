@@ -17,7 +17,7 @@ import com.mengding.app.pet.Sprites
 /** 桌面小组件：会动的宠物 + 今天喝了几杯。缩成 1×1 就是"会动的图标" */
 class PetWidget : AppWidgetProvider() {
     override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
-        Store.update { PetSim.simulate(it, System.currentTimeMillis()) }
+        if (com.mengding.app.logic.Consent.allowsBackground(ctx)) Store.update { PetSim.simulate(it, System.currentTimeMillis()) }
         ids.forEach { mgr.updateAppWidget(it, views(ctx)) }
     }
 

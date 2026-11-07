@@ -153,7 +153,7 @@ class PetService : Service(), SensorEventListener {
             if ("floating" !in s.tipsSeen) {
                 Store.update { it.copy(settings = it.settings.copy(tipsSeen = (it.settings.tipsSeen + "floating").distinct())) }
                 val h = android.os.Handler(android.os.Looper.getMainLooper())
-                listOf("轻点我一下，就是摸摸我～", "按住我拖一拖，可以把我放到别的地方", "长按我会弹出菜单：喝水、吃饭、躲起来……")
+                listOf("轻点我一下，就是摸摸我～", "按住我拖一拖，可以把我放到别的地方", "长按我会弹出菜单：哄睡、躲起来、做动作……")
                     .forEachIndexed { i, t -> h.postDelayed({ speak(t, sound = false, durationMs = 4000L) }, 1200L + i * 4300L) }
             }
         } else {
@@ -162,7 +162,8 @@ class PetService : Service(), SensorEventListener {
         val sm = getSystemService(SensorManager::class.java)
         val granted = checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
         val sensor = sm.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
-        val wantSteps = s.stepWalk || (s.floatingPet && s.petRunMode != "off")
+        // 只有开了「陪我走路」才听计步：桌宠跑步也只认这个开关
+        val wantSteps = s.stepWalk
         if (wantSteps && granted && sensor != null) {
             if (!stepSensorOn) { sm.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL); stepSensorOn = true }
         } else if (stepSensorOn) {
@@ -171,9 +172,16 @@ class PetService : Service(), SensorEventListener {
         refresh(force = true)
     }
 
+    /** 最近几次计步的时间：手机在手里晃一下也会报一两步，6 秒内连着走够 4 步才算「在走路 / 跑步」 */
+    private val stepTimes = ArrayDeque<Long>()
+
     override fun onSensorChanged(event: SensorEvent) {
-        val walkingBefore = PetFx.walkingUntil > Time.now()
-        PetFx.walkingUntil = Time.now() + 4000
+        val now = Time.now()
+        stepTimes.addLast(now)
+        while (stepTimes.isNotEmpty() && now - stepTimes.first() > 6000) stepTimes.removeFirst()
+        if (stepTimes.size < 4) return
+        val walkingBefore = PetFx.walkingUntil > now
+        PetFx.walkingUntil = now + 4000
         if (!walkingBefore) refresh()
         handler.removeCallbacks(walkEnd)
         handler.postDelayed(walkEnd, 4500)

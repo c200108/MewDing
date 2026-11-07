@@ -51,10 +51,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        Store.update { PetSim.simulate(it, Time.now()) }
+        if (com.mengding.app.logic.Consent.allowsBackground(this)) Store.update { PetSim.simulate(it, Time.now()) }
         // 打开 App 时，之前"收起"的悬浮宠物恢复显示
         if (FloatingPet.hiddenByUser) { FloatingPet.hiddenByUser = false; PetService.instance?.applySettings() }
-        if (Store.cfg.profile.onboarded) {
+        if (Store.cfg.profile.onboarded && com.mengding.app.logic.Consent.allowsBackground(this)) {
             PetService.sync(this)
             Reminders.checkMissed(this)
             Reminders.reschedule(this)

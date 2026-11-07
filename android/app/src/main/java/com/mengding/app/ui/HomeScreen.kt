@@ -152,6 +152,10 @@ fun HomeScreen() {
     // HD-2D 小镇的背景音乐（小喇叭开关在相框左下角）
     val hd2dHome = use3d && UnityHost.launchStyle == "hd2d"
     if (hd2dHome) HomeMusic(cfg.settings.homeMusic)
+    if (use3d) {
+        val ctxB = androidx.compose.ui.platform.LocalContext.current
+        LaunchedEffect(cfg.settings.bubbleStyle, UnityHost.ready) { UnityHost.bubbleSkin(ctxB, cfg.settings.bubbleStyle) }
+    }
     // 没有宠物出门（都在宠物部屋里）：场景照常显示，只是不能操作 —— 告诉小镇「都在家」，它就把宠物放进部屋、只展示
     val homePet = cfg.pets.firstOrNull()
     if (use3d && pet == null && homePet != null) {

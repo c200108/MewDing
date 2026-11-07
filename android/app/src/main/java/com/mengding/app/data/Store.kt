@@ -89,6 +89,14 @@ object Store {
         write("private.bin", Crypto.encrypt(json.encodeToString(PrivateState.serializer(), p).toByteArray()))
     }
 
+    /** 注销账号：内存里的数据全部换回默认值（文件由 AccountEraser 删） */
+    @Synchronized
+    fun resetMemory() {
+        _config.value = ConfigState()
+        _private.value = PrivateState()
+        _notes.value = NotesState()
+    }
+
     private fun write(name: String, bytes: ByteArray) {
         val tmp = File(dir, "$name.tmp")
         tmp.writeBytes(bytes)

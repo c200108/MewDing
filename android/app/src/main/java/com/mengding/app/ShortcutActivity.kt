@@ -11,6 +11,11 @@ import com.mengding.app.notify.Reminders
 class ShortcutActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 还没同意协议：不直接记数据，打开 App 先弹协议
+        if (com.mengding.app.logic.Consent.needsPrompt(this)) {
+            startActivity(android.content.Intent(this, MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            finish(); return
+        }
         val msg = when (intent?.action) {
             "com.mengding.app.SC_DRINK" -> Actions.drink(this)
             "com.mengding.app.SC_PET" -> Actions.petPet(this)

@@ -11,6 +11,7 @@ import com.mengding.app.pet.PetService
 /** 闹钟到点 */
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
+        if (!com.mengding.app.logic.Consent.allowsBackground(ctx)) return
         Reminders.fire(ctx)
     }
 }
@@ -18,6 +19,8 @@ class AlarmReceiver : BroadcastReceiver() {
 /** 开机、升级、改时区、改时间后重新排提醒，并恢复常驻宠物 */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
+        // 没同意协议（全新安装后还没打开过、不同意后撤回）：开机、升级都不自启
+        if (!com.mengding.app.logic.Consent.allowsBackground(ctx)) return
         Reminders.reschedule(ctx)
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             PetService.sync(ctx)
@@ -40,6 +43,7 @@ class ActionReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(ctx: Context, intent: Intent) {
+        if (!com.mengding.app.logic.Consent.allowsBackground(ctx)) return
         val id = intent.getIntExtra("id", 0)
         val extra = intent.getStringExtra("extra") ?: ""
         val msg: String? = when (intent.action) {

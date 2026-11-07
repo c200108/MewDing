@@ -127,10 +127,10 @@ fun CoachLayer() {
             val cx = target?.center?.x?.toDp() ?: (maxWidth / 2)
             (cx - maxW / 2).coerceIn(12.dp, maxWidth - maxW - 12.dp)
         }
-        Column(Modifier.offset(bubbleX, bubbleY).widthIn(max = maxW).clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFFFFFBF0)).padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(tip.text, fontSize = 15.sp, color = P.ink)
-            Text("${i + 1} / ${tips.size} · 点任意处继续", Modifier.padding(top = 4.dp), fontSize = 11.sp, color = P.sub)
+        // 宠物说的话：用「气泡样式」选的那套气泡，尾巴朝宠物（右下角）那一侧
+        PetSpeechBubble(tip.text, Modifier.offset(bubbleX, bubbleY).widthIn(max = maxW), tail = TailDir.DOWN, tailAt = .8f, fontSize = 15.sp) {
+            Text("${i + 1} / ${tips.size} · 点任意处继续", Modifier.padding(top = 4.dp), fontSize = 11.sp, color = P.sub,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
         Text("跳过全部", Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp).clip(RoundedCornerShape(14.dp))
             .background(Color(0xE6FFFFFF)).clickable { Coach.markSeen(*Coach.ALL.toTypedArray()); Coach.page = null }

@@ -102,6 +102,8 @@ fun MeScreen() {
             NavRow(Ic.Shield, "权限与提醒保障", "提醒不准时、宠物消失看这里") { Nav.go("perms") }
             Divider()
             NavRow(Ic.Heart, "关于萌叮", "版本 ${com.mengding.app.BuildConfig.VERSION_NAME}") { Nav.go("about") }
+            Divider()
+            NavRow(Ic.Trash, "注销账号", "删除本机全部数据，回到首次使用") { Nav.go("erase") }
         }
     }
 }
@@ -260,9 +262,11 @@ fun PetDisplayPage() {
                     }
                 }
                 if (s.petRunMode != "off") {
-                    Text(if (Perms.activity(ctx)) "你走路的时候它才会跑；你停下来，它也停下歇着。"
-                        else "宠物只在你走路时才跑，需要「身体活动」权限来知道你在走路（点上面的跑法会请求权限）。",
-                        Modifier.padding(top = 8.dp), fontSize = 12.sp, color = if (Perms.activity(ctx)) P.sub else P.pink)
+                    Text(when {
+                        !s.stepWalk -> "要先打开上面的「陪我走路」：你走路或跑步时它才会这样跑。平时它待在原地，不乱跑。"
+                        Perms.activity(ctx) -> "开了「陪我走路」：你走路或跑步时它才会跑；你停下来，它也停下歇着。"
+                        else -> "宠物只在你走路时才跑，需要「身体活动」权限来知道你在走路（点上面的跑法会请求权限）。"
+                    }, Modifier.padding(top = 8.dp), fontSize = 12.sp, color = if (s.stepWalk && Perms.activity(ctx)) P.sub else P.pink)
                 }
                 Gap(8.dp)
                 when (s.petRunMode) {
@@ -289,6 +293,24 @@ fun PetDisplayPage() {
                             Modifier.padding(top = 8.dp), fontSize = 12.sp, color = P.sub)
                     }
                     else -> Text("宠物待在原地不跑。", fontSize = 12.sp, color = P.sub)
+                }
+            }
+            SectionTitle("随机动一动")
+            MCard(padding = 12.dp) {
+                ToggleRow("定时随机动一动", "不走路的时候，也每隔一会儿自己跑一趟、蹦一蹦、打滚转圈", s.petRandomMove) { v ->
+                    setS { it.copy(petRandomMove = v) }
+                }
+                if (s.petRandomMove) {
+                    Gap(8.dp)
+                    Text("多久动一次", fontSize = 14.sp, color = P.ink)
+                    Gap(6.dp)
+                    HRow {
+                        listOf(5, 10, 20, 30, 60).forEach { m ->
+                            Pill("${m}分", s.petRandomEveryMin == m) { setS { it.copy(petRandomEveryMin = m) } }
+                        }
+                    }
+                    Text("跑的时候按上面选的跑法跑一趟；跑法选「不跑」时只在原地蹦跳、打滚。",
+                        Modifier.padding(top = 8.dp), fontSize = 12.sp, color = P.sub)
                 }
             }
             Text("小技巧：长按桌面宠物 →「躲起来」，它会侧身躲到屏幕边上只露出耳朵，点一下耳朵就探出来。",
@@ -511,6 +533,8 @@ fun PrivacyPage() {
         MCard {
             Text("经期、喝水、吃饭、睡觉记录默认只存在这台手机上，并用手机系统的密钥加密；设置和宠物存在本机。",
                 fontSize = 14.sp, color = P.ink)
+            Gap(8.dp)
+            NavRow(Ic.Lock, "隐私政策", "完整的信息收集、权限和第三方服务说明") { Nav.go("policy") }
         }
         SectionTitle("本地备份（换手机用）")
         MCard {
@@ -531,6 +555,10 @@ fun PrivacyPage() {
             ToggleRow("睡觉记录", null, s.cloud.sleep, enabled = false) {}
             ToggleRow("吃饭记录", null, s.cloud.meals, enabled = false) {}
             if (cfg.profile.gender == Gender.FEMALE) ToggleRow("经期记录", null, s.cloud.period, enabled = false) {}
+        }
+        SectionTitle("注销账号")
+        MCard(padding = 12.dp) {
+            NavRow(Ic.Trash, "注销账号", "删除本机全部数据，停止所有提醒，回到首次使用") { Nav.go("erase") }
         }
     }
     pwFor?.let { mode ->
@@ -596,7 +624,8 @@ fun AboutPage() {
         UpdateCard()
         Gap(14.dp)
         MCard {
-            NavRow(Ic.Note, "用户协议", "原创素材使用须经作者许可") { Nav.go("terms") }
+            NavRow(Ic.Note, "用户服务协议", "使用规则、账号与注销、原创素材版权") { Nav.go("terms") }
+            NavRow(Ic.Lock, "隐私政策", "收集哪些信息、权限用途、第三方服务清单") { Nav.go("policy") }
             NavRow(Ic.Shield, "开源许可", "用到的开源项目和素材") { Nav.go("licenses") }
             NavRow(Ic.Speech, "联系作者", "问题反馈、合作、素材使用许可") { Nav.go("contact") }
         }
@@ -646,7 +675,7 @@ fun SpeechPage() {
         }
         Gap(8.dp)
         Text("需要打开「宠物显示 → 桌面悬浮宠物」才能在桌面上看到气泡；你设定的睡觉时段里不说话。", fontSize = 12.sp, color = P.sub)
-        SectionTitle("气泡样式（首页 2D 场景）")
+        SectionTitle("气泡样式（首页场景、桌面宠物、提示里宠物说的话都用这一套）")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             BubbleSkins.styles.forEach { (k, label) ->
                 Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
