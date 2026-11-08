@@ -39,6 +39,11 @@ class MengDingApp : Application() {
                 val used = Store.notesNow.notes.flatMap { n -> n.blocks.mapNotNull { it.file } }.toSet()
                 com.mengding.app.logic.NoteVideo.files.cleanOrphans(used)
             }
+            // 便签分享生成的网页 / 网页包可能有几个 GB：放了一小时以上的删掉（对方 App 早就读完了）
+            runCatching {
+                val cutoff = System.currentTimeMillis() - 60 * 60_000L
+                java.io.File(ctx.cacheDir, "share").takeIf { it.isDirectory && it.lastModified() < cutoff }?.deleteRecursively()
+            }
         }, "video-clean").start()
     }
 }

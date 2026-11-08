@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<!-- 协议版本 3（与 App 内 Consent.CURRENT_VERSION 对应）。修改本政策时：改更新日期 + 版本号 +1，老用户会再次看到同意弹窗。
+<!-- 协议版本 4（与 App 内 Consent.CURRENT_VERSION 对应）。修改本政策时：改更新日期 + 版本号 +1，老用户会再次看到同意弹窗。
      以后每次接入新的第三方服务或 SDK，都要补进第十三节。 -->
 <title>萌叮隐私政策</title>
 <style>
@@ -110,7 +110,7 @@ strong{font-weight:700}
 <li><strong>共享：</strong>我们不会与任何公司、组织或个人共享你的个人信息。唯一的对外联网请求见第十三节所列的第三方服务（天气、更新、字体下载），这些请求只发送完成该功能必需的内容，不包含你的记录。</li>
 <li><strong>转让：</strong>我们不会转让你的个人信息。</li>
 <li><strong>公开披露：</strong>我们不会公开披露你的个人信息。</li>
-<li>你主动使用「分享便签」「导出备份」时，文件由你选择发送对象，接收方如何处理由你和接收方决定。</li>
+<li>你主动使用「分享便签」「导出备份」时，文件由你选择发送对象，接收方如何处理由你和接收方决定。分享时生成的网页、压缩包、压缩后的视频只临时放在萌叮自己的缓存目录里，下次分享或一小时后打开萌叮时自动删除；选「压缩视频」时，转码完全在你的手机上完成，视频不会上传到任何服务器。</li>
 </ol>
 
 <h2 id="s5">五、我们如何保护你的个人信息</h2>
@@ -152,7 +152,8 @@ strong{font-weight:700}
 
 <h2 id="s11">十一、历史版本</h2>
 <ul>
-<li>第 3 版：2026 年 11 月 8 日更新并生效（当前版本）：新增 7 款可选下载的显示字体及其下载来源。</li>
+<li>第 4 版：2026 年 11 月 8 日更新并生效（当前版本）：分享便签时可选「压缩视频」，新增本机视频转码组件 AndroidX Media3 Transformer（只在手机上处理，不联网）；说明分享生成的临时文件会自动清理。</li>
+<li>第 3 版：2026 年 11 月 8 日：新增 7 款可选下载的显示字体及其下载来源。</li>
 <li>第 2 版：2026 年 11 月 7 日：补充开发主体与联系邮箱。</li>
 <li>第 1 版：2026 年 11 月 7 日发布。</li>
 </ul>
@@ -180,11 +181,11 @@ strong{font-weight:700}
 </div>
 
 <div class="sdk">
-<h3>2. AndroidX Media3 ExoPlayer</h3>
-<p><span class="k">包名：</span>androidx.media3.exoplayer</p>
-<p><span class="k">使用目的：</span>在本机播放便签里的视频</p>
+<h3>2. AndroidX Media3（ExoPlayer、Transformer、Effect）</h3>
+<p><span class="k">包名：</span>androidx.media3.exoplayer、androidx.media3.transformer、androidx.media3.effect</p>
+<p><span class="k">使用目的：</span>在本机播放便签里的视频；分享便签选「压缩视频」时，在本机把视频转码成更小的文件</p>
 <p><span class="k">涉及个人信息：</span>无，只读取你放进便签的视频文件</p>
-<p><span class="k">使用场景：</span>打开含视频的便签时</p>
+<p><span class="k">使用场景：</span>打开含视频的便签时；分享便签并选择「网页 · 压缩视频」时</p>
 <p><span class="k">合作方主体：</span>Google LLC</p>
 <p><span class="k">收集方式：</span>不收集（本地运行，不联网）</p>
 <p><span class="k">官网：</span><a href="https://developer.android.com/media/media3">https://developer.android.com/media/media3</a></p>

@@ -26,7 +26,7 @@ fun LicensesPage() {
             Lic("Jetpack Compose（UI、Foundation、Material 3）", "Google / Android 开源项目", "Apache License 2.0", "developer.android.com/jetpack/compose"),
             Lic("AndroidX Core、Activity、Lifecycle", "Google / Android 开源项目", "Apache License 2.0", "developer.android.com/jetpack/androidx"),
             Lic("Android Games Frame Pacing", "Google", "Apache License 2.0", "developer.android.com/games/sdk/frame-pacing"),
-            Lic("AndroidX Media3 ExoPlayer（便签视频播放）", "Google / Android 开源项目", "Apache License 2.0", "github.com/androidx/media"),
+            Lic("AndroidX Media3 ExoPlayer、Transformer、Effect（便签视频播放、分享时压缩视频）", "Google / Android 开源项目", "Apache License 2.0", "github.com/androidx/media"),
         ))
         LicenseGroup("小游戏音乐与音效（CC0 公共领域）", listOf(
             Lic("The Essential Retro Video Game Sound Effects Collection", "Juhani Junkala", "CC0 1.0", "opengameart.org"),

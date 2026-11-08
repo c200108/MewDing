@@ -23,8 +23,8 @@ android {
         applicationId = "com.mengding.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 36
-        versionName = "4.0.9-test"
+        versionCode = 37
+        versionName = "4.0.10-test"
         // 首页 3D 小屋的 Unity 运行库只带 64 位 ARM（真机）；调试包另外带 x86_64 方便电脑模拟器
         ndk { abiFilters += listOf("arm64-v8a") }
     }
@@ -79,5 +79,8 @@ dependencies {
     implementation("androidx.games:games-frame-pacing:2.1.2")
     // 便签视频播放：只用播放内核，不带 media3-ui，控制条自己画（跟随界面风格）
     implementation("androidx.media3:media3-exoplayer:1.4.1")
+    // 便签导出时「压缩视频」：手机硬件编码转成 H.265（不支持时退回 H.264），只在本机处理，不联网
+    implementation("androidx.media3:media3-transformer:1.4.1")
+    implementation("androidx.media3:media3-effect:1.4.1")
     testImplementation("junit:junit:4.13.2")
 }

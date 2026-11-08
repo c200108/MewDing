@@ -17,7 +17,8 @@ import java.io.InputStream
  */
 class NoteVideoFiles(private val root: File) {
     companion object {
-        const val MAX_BYTES = 500L * 1024 * 1024
+        /** 单个视频上限 10GB（以前 500MB；用户会放几个 G 的视频，导出时可以压缩或打成网页包） */
+        const val MAX_BYTES = 10L * 1024 * 1024 * 1024
         val EXTS = setOf("mp4", "m4v", "3gp", "webm", "mkv", "mov")
         fun isVideo(rel: String?) = rel != null && rel.startsWith("videos/") && rel.substringAfterLast('.').lowercase() in EXTS
         /** 封面图跟视频同名，扩展名换成 .jpg */
@@ -152,7 +153,8 @@ object NoteVideo {
     /** 在后台线程调用 */
     fun import(ctx: Context, uri: Uri, noteId: String, onProgress: (Float) -> Unit, cancelled: () -> Boolean): Result {
         val size = sizeOf(ctx, uri)
-        if (size > NoteVideoFiles.MAX_BYTES) return Result.Fail("视频超过 500MB，请先剪短或压缩再插入")
+        if (size > NoteVideoFiles.MAX_BYTES) return Result.Fail("视频超过 10GB，请先剪短或压缩再插入")
+        if (size > 0 && ctx.filesDir.usableSpace < size + 200L * 1024 * 1024) return Result.Fail("手机空间不够：这个视频要占 ${NoteExport.mb(size)}，请先清理一些空间")
         val fs = files
         val rel = fs.newRel(noteId, extOf(ctx, uri), Time.now())
         return try {
@@ -165,7 +167,7 @@ object NoteVideo {
         } catch (_: NoteVideoFiles.Cancelled) {
             Result.Cancelled
         } catch (e: IOException) {
-            if (e.message == "too big") Result.Fail("视频超过 500MB，请先剪短或压缩再插入")
+            if (e.message == "too big") Result.Fail("视频超过 10GB，请先剪短或压缩再插入")
             else Result.Fail(if (ctx.filesDir.usableSpace < 50L * 1024 * 1024) "手机空间不够了" else "视频复制失败")
         } catch (_: Throwable) {
             fs.delete(rel); Result.Fail("视频复制失败")

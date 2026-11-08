@@ -11,7 +11,6 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.util.Base64
 import androidx.core.content.FileProvider
 import com.mengding.app.data.Block
 import com.mengding.app.data.BlockType
@@ -21,6 +20,12 @@ import java.io.File
 import java.time.format.DateTimeFormatter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
 
 /**
  * 便签分享：把一条便签转成别的格式，用系统分享面板发出去（微信、QQ、邮件、保存到文件……都在面板里选）。
@@ -32,7 +37,8 @@ import java.util.zip.ZipOutputStream
  */
 object NoteExport {
     enum class Kind(val label: String, val desc: String) {
-        HTML("网页", "一个 .html 文件，图片和音频都在里面，浏览器打开就能看能听"),
+        HTML("网页", "一个 .html 文件，图片、音频、视频都在里面，浏览器打开就能看；视频很大时自动打包成「网页 + 视频文件夹」压缩包"),
+        HTML_SMALL("网页 · 压缩视频", "先把视频压小再导出：视频越大压得越多（几个 GB 能缩到一两成），画质略降，适合发微信"),
         IMAGE("长图", "便签纸样式的长图片，适合发朋友圈、聊天"),
         MARKDOWN("Markdown 文档", "压缩包里有 .md 和图片音频，能导入笔记软件"),
         TEXT("纯文字", "只发文字，什么 App 都能收"),
@@ -40,55 +46,130 @@ object NoteExport {
 
     private val NoteColorsHex = listOf("", "#E5606F", "#F08A3C", "#2FA37E", "#4A8FE0", "#9A72D8")
     private const val INK = "#3A3247"; private const val SUB = "#8C8496"
-    /** 嵌进网页的单个音频最大字节数：太大的音频只写文件名，免得网页几十兆打不开 */
-    private const val MAX_EMBED_AUDIO = 15L * 1024 * 1024
 
-    fun share(ctx: Context, note: Note, kind: Kind): String? = runCatching {
-        val dir = File(ctx.cacheDir, "share").apply { deleteRecursively(); mkdirs() }
+    /** 导出进度：标题、0..1（< 0 表示不知道）、补充说明 */
+    data class Stage(val title: String, val frac: Float, val hint: String? = null)
+
+    fun mb(b: Long): String = when {
+        b >= 1024L * 1024 * 1024 -> "%.2f GB".format(b / 1024.0 / 1024 / 1024)
+        else -> "%.1f MB".format(b / 1024.0 / 1024)
+    }
+
+    /**
+     * 生成文件并弹出系统分享面板。耗时操作在 IO 线程做，onStage 报进度（调用线程不固定）。
+     * 协程被取消 = 用户点了取消：半成品全删掉，不弹分享。返回出错说明；成功或取消返回 null。
+     */
+    suspend fun share(ctx: Context, note: Note, kind: Kind, onStage: (Stage) -> Unit = {}): String? {
+        val job = currentCoroutineContext()[Job]
+        val cancelled = { job?.isActive == false }
+        val dir = File(ctx.cacheDir, "share")
+        return try {
+            val intent = withContext(Dispatchers.IO) { build(ctx, note, kind, dir, onStage, cancelled) }
+            withContext(Dispatchers.Main) { ctx.startActivity(Intent.createChooser(intent, "分享便签").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            null
+        } catch (e: CancellationException) {
+            withContext(NonCancellable + Dispatchers.IO) { dir.deleteRecursively() }; throw e
+        } catch (e: NoteHtml.Cancelled) {
+            withContext(NonCancellable + Dispatchers.IO) { dir.deleteRecursively() }; null
+        } catch (e: NoSpace) {
+            withContext(NonCancellable + Dispatchers.IO) { dir.deleteRecursively() }; e.message
+        } catch (e: Throwable) {
+            withContext(NonCancellable + Dispatchers.IO) { dir.deleteRecursively() }
+            if (e is OutOfMemoryError) "分享失败：内存不够" else "分享失败：${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    /** 空间不够时抛这个，消息直接给用户看 */
+    private class NoSpace(msg: String) : Exception(msg)
+
+    private fun ensureSpace(dir: File, need: Long) {
+        val free = dir.usableSpace
+        if (free < need + 50L * 1024 * 1024) throw NoSpace("手机空间不够：需要约 ${mb(need)}，现在只剩 ${mb(free)}")
+    }
+
+    private suspend fun build(ctx: Context, note: Note, kind: Kind, dir: File, onStage: (Stage) -> Unit, cancelled: () -> Boolean): Intent {
+        dir.deleteRecursively(); dir.mkdirs()
         val base = safeName(note.title.ifBlank { "萌叮便签" })
         val intent = Intent(Intent.ACTION_SEND)
-        when (kind) {
-            Kind.TEXT -> {
-                intent.type = "text/plain"
-                intent.putExtra(Intent.EXTRA_TEXT, toText(note))
+        intent.putExtra(Intent.EXTRA_SUBJECT, note.title.ifBlank { "萌叮便签" })
+        if (kind == Kind.TEXT) {
+            intent.type = "text/plain"
+            intent.putExtra(Intent.EXTRA_TEXT, toText(note))
+            return intent
+        }
+        val f: File = when (kind) {
+            Kind.HTML, Kind.HTML_SMALL -> buildHtml(ctx, note, kind == Kind.HTML_SMALL, dir, base, onStage, cancelled)
+            Kind.IMAGE -> {
+                onStage(Stage("生成长图", -1f))
+                File(dir, "$base.png").apply { outputStream().use { toImage(ctx, note).compress(Bitmap.CompressFormat.PNG, 100, it) } }
             }
-            else -> {
-                val f = when (kind) {
-                    Kind.HTML -> File(dir, "$base.html").apply { writeText(toHtml(ctx, note)) }
-                    Kind.IMAGE -> File(dir, "$base.png").apply { outputStream().use { toImage(ctx, note).compress(Bitmap.CompressFormat.PNG, 100, it) } }
-                    else -> File(dir, "$base.zip").also { writeMarkdownZip(note, it) }
-                }
-                val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.share", f)
-                intent.type = when (kind) { Kind.HTML -> "text/html"; Kind.IMAGE -> "image/png"; else -> "application/zip" }
-                intent.putExtra(Intent.EXTRA_STREAM, uri)
-                intent.clipData = ClipData.newRawUri(f.name, uri)
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            else -> File(dir, "$base.zip").also { writeMarkdownZip(note, it, onStage, cancelled) }
+        }
+        if (cancelled()) throw NoteHtml.Cancelled()
+        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.share", f)
+        intent.type = when {
+            f.name.endsWith(".html") -> "text/html"; f.name.endsWith(".png") -> "image/png"; else -> "application/zip"
+        }
+        intent.putExtra(Intent.EXTRA_STREAM, uri)
+        intent.clipData = ClipData.newRawUri(f.name, uri)
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        return intent
+    }
+
+    /** 便签里有没有视频（有才显示「网页 · 压缩视频」） */
+    fun hasVideo(note: Note) = note.blocks.any { it.type == BlockType.VIDEO && it.file != null }
+
+    private suspend fun buildHtml(ctx: Context, note: Note, squeeze: Boolean, dir: File, base: String,
+                                  onStage: (Stage) -> Unit, cancelled: () -> Boolean): File {
+        val squeezed = HashMap<String, File>()
+        if (squeeze) {
+            val vids = note.blocks.filter { it.type == BlockType.VIDEO }.mapNotNull { it.file }.distinct()
+                .filter { NoteVideo.files.file(it).exists() }
+            val tmp = File(dir, "tmp").apply { mkdirs() }
+            vids.forEachIndexed { i, rel ->
+                if (cancelled()) throw NoteHtml.Cancelled()
+                val src = NoteVideo.files.file(rel)
+                val info = VideoSqueeze.info(src) ?: return@forEachIndexed
+                val t = VideoSqueezePlan.plan(src.length(), info.durationMs, info.width, info.height) ?: return@forEachIndexed
+                val hevc = VideoSqueeze.pickMime(t.width, t.height) == androidx.media3.common.MimeTypes.VIDEO_H265
+                val est = t.estimateBytes(info.durationMs).let { if (hevc) it else it * 7 / 5 }
+                ensureSpace(dir, est)
+                val title = if (vids.size > 1) "压缩视频 ${i + 1}/${vids.size}" else "压缩视频"
+                val hint = "${mb(src.length())} → 预计约 ${mb(est)}（${t.width}×${t.height}）"
+                onStage(Stage(title, 0f, hint))
+                val dst = File(tmp, "v$i.mp4")
+                val ok = VideoSqueeze.run(ctx, src, dst, t) { p -> onStage(Stage(title, p, hint)) }
+                if (ok && dst.exists() && dst.length() in 1 until src.length()) squeezed[rel] = dst else dst.delete()
             }
         }
-        intent.putExtra(Intent.EXTRA_SUBJECT, note.title.ifBlank { "萌叮便签" })
-        ctx.startActivity(Intent.createChooser(intent, "分享便签").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        null
-    }.exceptionOrNull()?.let { "分享失败：${it.message ?: it.javaClass.simpleName}" }
+        val media = object : NoteHtml.Media {
+            override fun image(name: String) = imageBytes(name)
+            override fun poster(rel: String) = NoteVideo.files.file(NoteVideoFiles.posterOf(rel)).takeIf { it.exists() }?.let { "image/jpeg" to it.readBytes() }
+            override fun video(rel: String) = squeezed[rel] ?: NoteVideo.files.file(rel)
+            override fun audio(name: String) = NoteMedia.file(name)
+        }
+        val bytes = NoteHtml.mediaFiles(note, media).sumOf { it.length() }
+        val bundle = NoteHtml.needsBundle(bytes)
+        ensureSpace(dir, if (bundle) bytes else bytes / 3 * 4)
+        val title = if (bundle) "生成网页包" else "生成网页"
+        val note2 = if (bundle) "视频较大，打包成「网页 + 视频文件夹」的压缩包，解压后打开网页就能看" else null
+        onStage(Stage(title, 0f, note2))
+        val progress = NoteHtml.Progress(bytes, cancelled) { d, t ->
+            onStage(Stage(title, if (t > 0) d.toFloat() / t else -1f, "${mb(d)} / ${mb(t)}" + (note2?.let { "\n$it" } ?: "")))
+        }
+        val date = dateOf(note)
+        val out = if (bundle) File(dir, "$base（网页包）.zip").also { NoteHtml.writeBundle(it, note, date, base, media, progress) }
+            else File(dir, "$base.html").also { f -> f.outputStream().buffered(256 * 1024).use { NoteHtml.writeSingle(it, note, date, media, progress) } }
+        File(dir, "tmp").deleteRecursively()
+        return out
+    }
 
     private fun safeName(s: String) = s.replace(Regex("[\\\\/:*?\"<>|\\n\\r\\t]"), "_").take(40).ifBlank { "萌叮便签" }
 
     private fun dateOf(note: Note) = Time.dateTimeOf(if (note.updatedAt > 0) note.updatedAt else Time.now())
         .format(DateTimeFormatter.ofPattern("yyyy 年 M 月 d 日 HH:mm"))
 
-    /** 列表前缀：圆点、数字（同类连续计数）、待办 */
-    private fun prefixes(blocks: List<Block>): List<String> {
-        var n = 0
-        return blocks.map { b ->
-            if (b.type != BlockType.TEXT || b.spec.list != 2) n = 0
-            when {
-                b.type != BlockType.TEXT -> ""
-                b.spec.list == 1 -> "• "
-                b.spec.list == 2 -> "${++n}. "
-                b.spec.list == 3 -> if (b.checked) "☑ " else "☐ "
-                else -> ""
-            }
-        }
-    }
+    private fun prefixes(blocks: List<Block>) = NoteHtml.prefixes(blocks)
 
     // ---------------- 纯文字 ----------------
 
@@ -107,109 +188,20 @@ object NoteExport {
         appendLine().append("—— 来自萌叮便签 · ${dateOf(note)}")
     }
 
-    // ---------------- 网页 ----------------
-
-    private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
-
-    private fun mimeOf(name: String) = when (name.substringAfterLast('.').lowercase()) {
-        "png" -> "image/png"; "webp" -> "image/webp"; "gif" -> "image/gif"; "jpg", "jpeg" -> "image/jpeg"
-        "mp3" -> "audio/mpeg"; "wav" -> "audio/wav"; "ogg", "opus" -> "audio/ogg"; "flac" -> "audio/flac"
-        "aac" -> "audio/aac"; "amr" -> "audio/amr"; "webm" -> "audio/webm"; "mka" -> "audio/x-matroska"
-        else -> "audio/mp4"
-    }
-
     /** 图片按 1600 宽压一下再嵌（原图十几兆的照片嵌进网页太大）；gif 原样嵌（保留动图） */
-    private fun imageDataUri(name: String): String? {
+    private fun imageBytes(name: String): Pair<String, ByteArray>? {
         val f = NoteMedia.file(name); if (!f.exists()) return null
-        if (name.endsWith(".gif")) return "data:image/gif;base64," + Base64.encodeToString(f.readBytes(), Base64.NO_WRAP)
+        if (name.endsWith(".gif")) return "image/gif" to f.readBytes()
         val bmp = NoteMedia.bitmap(name, 1600) ?: return null
         val out = ByteArrayOutputStream()
         val png = name.endsWith(".png") || name.endsWith(".webp")
         bmp.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, if (png) 100 else 88, out)
-        return "data:${if (png) "image/png" else "image/jpeg"};base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-    }
-
-    fun toHtml(ctx: Context, note: Note): String {
-        val pre = prefixes(note.blocks)
-        val body = StringBuilder()
-        note.blocks.forEachIndexed { i, b ->
-            when (b.type) {
-                BlockType.TEXT -> {
-                    val sp = b.spec
-                    val css = mutableListOf<String>()
-                    css += "font-size:" + listOf("14px", "17px", "21px", "26px").getOrElse(sp.size) { "17px" }
-                    if (sp.bold || sp.size == 3) css += "font-weight:700"
-                    if (sp.italic) css += "font-style:italic"
-                    val deco = listOfNotNull("underline".takeIf { sp.underline }, "line-through".takeIf { sp.strike || b.checked })
-                    if (deco.isNotEmpty()) css += "text-decoration:" + deco.joinToString(" ")
-                    NoteColorsHex.getOrNull(sp.color)?.takeIf { it.isNotEmpty() }?.let { css += "color:$it" }
-                    if (b.checked) css += "color:$SUB"
-                    css += "text-align:" + listOf("left", "center", "right").getOrElse(sp.align) { "left" }
-                    val text = esc(b.text).ifEmpty { "&nbsp;" }
-                    val p = "<p style=\"${css.joinToString(";")}\">${esc(pre[i])}$text</p>"
-                    body.append(if (sp.quote) "<blockquote>$p</blockquote>" else p).append('\n')
-                }
-                BlockType.IMAGE -> b.file?.let { imageDataUri(it) }?.let { body.append("<figure><img src=\"$it\" alt=\"图片\"></figure>\n") }
-                BlockType.VIDEO -> {
-                    val f = b.file?.let { NoteVideo.files.file(it) }
-                    val label = "视频 · ${NoteMedia.fmt(b.durationMs)}"
-                    if (f != null && f.exists() && f.length() <= MAX_EMBED_AUDIO * 2) {
-                        val src = "data:${if (f.name.endsWith(".webm")) "video/webm" else "video/mp4"};base64," + Base64.encodeToString(f.readBytes(), Base64.NO_WRAP)
-                        body.append("<figure><video controls preload=\"metadata\" style=\"width:100%;border-radius:14px\" src=\"$src\"></video></figure>\n")
-                    } else {
-                        b.file?.let { NoteVideoFiles.posterOf(it) }?.takeIf { NoteVideo.files.file(it).exists() }
-                            ?.let { imageDataUri(it) }?.let { body.append("<figure><img src=\"$it\" alt=\"视频封面\"></figure>\n") }
-                        body.append("<div class=\"audio\"><div class=\"al\">▶ $label（视频太大，没有放进网页）</div></div>\n")
-                    }
-                }
-                BlockType.AUDIO -> {
-                    val f = b.file?.let { NoteMedia.file(it) }
-                    val label = "${if (b.recorded) "录音" else esc(b.text.ifBlank { "音频" })} · ${NoteMedia.fmt(b.durationMs)}"
-                    if (f != null && f.exists() && f.length() <= MAX_EMBED_AUDIO) {
-                        val src = "data:${mimeOf(f.name)};base64," + Base64.encodeToString(f.readBytes(), Base64.NO_WRAP)
-                        body.append("<div class=\"audio\"><div class=\"al\">♪ $label</div><audio controls preload=\"metadata\" src=\"$src\"></audio></div>\n")
-                    } else body.append("<div class=\"audio\"><div class=\"al\">♪ $label（文件太大，没有放进网页）</div></div>\n")
-                }
-                BlockType.TABLE -> {
-                    body.append("<table>")
-                    b.table.forEachIndexed { r, row ->
-                        body.append("<tr>")
-                        row.forEach { c -> body.append(if (r == 0) "<th>${esc(c)}</th>" else "<td>${esc(c)}</td>") }
-                        body.append("</tr>")
-                    }
-                    body.append("</table>\n")
-                }
-            }
-        }
-        val title = esc(note.title.ifBlank { "萌叮便签" })
-        return """<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>$title</title>
-<style>
-:root{--bg:#FFF8F2;--paper:#FFFFFF;--ink:$INK;--sub:$SUB;--mint:#2FB38C;--line:#F0E4DA}
-@media (prefers-color-scheme:dark){:root{--bg:#1E1A24;--paper:#2A2531;--ink:#F2ECF6;--sub:#A79FB0;--line:#3A3442}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;line-height:1.7}
-.card{max-width:720px;margin:24px auto;background:var(--paper);border-radius:22px;padding:28px 26px 22px;box-shadow:0 6px 24px rgba(80,50,60,.08);border:1px solid var(--line)}
-h1{font-size:26px;margin:0 0 4px}.date{color:var(--sub);font-size:13px;margin-bottom:18px}
-p{margin:.35em 0;white-space:pre-wrap;word-break:break-word}
-blockquote{margin:.6em 0;padding:.2em 0 .2em 14px;border-left:4px solid var(--mint);color:var(--sub)}
-figure{margin:12px 0}img{max-width:100%;border-radius:14px;display:block}
-.audio{background:var(--bg);border-radius:14px;padding:10px 12px;margin:10px 0}.al{font-size:14px;color:var(--sub);margin-bottom:6px}audio{width:100%}
-table{border-collapse:collapse;width:100%;margin:12px 0;font-size:15px}th,td{border:1px solid var(--line);padding:6px 8px;text-align:left}th{background:var(--bg)}
-.foot{color:var(--sub);font-size:12px;text-align:center;margin-top:22px}
-@media (max-width:480px){.card{margin:0;border-radius:0;border:0;min-height:100vh;padding:22px 16px}}
-</style></head>
-<body><main class="card">
-<h1>$title</h1><div class="date">${dateOf(note)}</div>
-$body<div class="foot">来自 萌叮便签</div>
-</main></body></html>
-"""
+        return (if (png) "image/png" else "image/jpeg") to out.toByteArray()
     }
 
     // ---------------- Markdown（压缩包） ----------------
 
-    fun writeMarkdownZip(note: Note, out: File) {
+    fun writeMarkdownZip(note: Note, out: File, onStage: (Stage) -> Unit = {}, cancelled: () -> Boolean = { false }) {
         val pre = prefixes(note.blocks)
         val media = mutableListOf<File>()
         val md = buildString {
@@ -248,9 +240,23 @@ $body<div class="foot">来自 萌叮便签</div>
             }
             appendLine("---").append("来自萌叮便签")
         }
-        ZipOutputStream(out.outputStream()).use { z ->
+        val files = media.distinctBy { it.name }
+        val total = files.sumOf { it.length() }
+        ensureSpace(out.parentFile ?: out, total)
+        val title = "生成 Markdown 压缩包"
+        val progress = NoteHtml.Progress(total, cancelled) { d, t -> onStage(Stage(title, if (t > 0) d.toFloat() / t else -1f, "${mb(d)} / ${mb(t)}")) }
+        onStage(Stage(title, 0f))
+        ZipOutputStream(out.outputStream().buffered(256 * 1024)).use { z ->
             z.putNextEntry(ZipEntry("${safeName(note.title.ifBlank { "萌叮便签" })}.md")); z.write(md.toByteArray()); z.closeEntry()
-            media.distinctBy { it.name }.forEach { f -> z.putNextEntry(ZipEntry("media/${f.name}")); f.inputStream().use { it.copyTo(z) }; z.closeEntry() }
+            // 图片、音频、视频本身都是压缩格式，再压只费时间：只存不压
+            z.setLevel(java.util.zip.Deflater.NO_COMPRESSION)
+            val buf = ByteArray(256 * 1024)
+            files.forEach { f ->
+                progress.check()
+                z.putNextEntry(ZipEntry("media/${f.name}"))
+                f.inputStream().use { input -> while (true) { val r = input.read(buf); if (r < 0) break; z.write(buf, 0, r); progress.add(r); progress.check() } }
+                z.closeEntry()
+            }
         }
     }
 

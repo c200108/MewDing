@@ -199,20 +199,32 @@ fun NoteEditorPage(id: String) {
     }
 
     var showShare by remember { mutableStateOf(false) }
+    // 导出进度：协程挂在整个编辑页上（不能挂在分享弹窗上：弹窗一关协程就被取消，出错提示弹不出来）
+    var exportStage by remember { mutableStateOf<com.mengding.app.logic.NoteExport.Stage?>(null) }
+    var exportJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    exportStage?.let { st ->
+        MdProgress(st.title, st.frac, st.hint) { exportJob?.cancel(); exportStage = null }
+    }
     if (showShare) {
-        val scope = androidx.compose.runtime.rememberCoroutineScope()
         AlertDialog(
             onDismissRequest = { showShare = false },
             title = { Text("分享便签") },
             text = {
                 Column {
-                    com.mengding.app.logic.NoteExport.Kind.entries.forEach { k ->
+                    val hasVideo = com.mengding.app.logic.NoteExport.hasVideo(note)
+                    com.mengding.app.logic.NoteExport.Kind.entries
+                        .filter { it != com.mengding.app.logic.NoteExport.Kind.HTML_SMALL || hasVideo }
+                        .forEach { k ->
                         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
                             showShare = false
                             NotePlayer.stop()
-                            scope.launch(kotlinx.coroutines.Dispatchers.Default) {
-                                val err = com.mengding.app.logic.NoteExport.share(ctx, note, k)
-                                if (err != null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { toast(err) }
+                            exportJob?.cancel()
+                            exportStage = com.mengding.app.logic.NoteExport.Stage("正在准备", -1f)
+                            exportJob = scope.launch {
+                                val err = try {
+                                    com.mengding.app.logic.NoteExport.share(ctx, note, k) { st -> scope.launch { if (exportStage != null) exportStage = st } }
+                                } finally { exportStage = null }
+                                if (err != null) toast(err)
                             }
                         }.padding(horizontal = 6.dp, vertical = 10.dp)) {
                             Text(k.label, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = P.ink)
