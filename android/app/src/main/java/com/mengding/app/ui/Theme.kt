@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.lerp
 
 /** 主色薄荷绿，辅色奶油、樱花粉（需求 U3），带深色模式 */
 data class Palette(
@@ -20,7 +21,12 @@ data class Palette(
     val pink: Color, val pinkSoft: Color, val cream: Color,
     val ink: Color, val sub: Color, val line: Color, val card: Color,
     val gold: Color, val blue: Color, val purple: Color, val danger: Color,
-)
+) {
+    /** 卡片、弹窗的浅描边：主题主色往白里调（经典薄荷时约等于原来的 #8FD3C1） */
+    val edge: Color get() = lerp(mint, Color.White, 0.42f)
+    /** 线条风、强调用的深一点的描边（经典薄荷时约等于原来的 #71BCA8） */
+    val edgeDeep: Color get() = lerp(mint, Color.White, 0.22f)
+}
 
 val LightPalette = Palette(
     mint = Color(0xFF2FB38C), mintDeep = Color(0xFF1E8C6C), mintSoft = Color(0xFFD6F7EA),

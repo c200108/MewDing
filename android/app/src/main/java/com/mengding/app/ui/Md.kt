@@ -156,8 +156,6 @@ fun mdSurface(): Color {
     }
 }
 
-/** 奶油气泡的招牌薄荷描边（A 素材表 #8FD3C1） */
-private val CreamMint = Color(0xFF8FD3C1)
 
 @Composable
 fun mdOutline(): Color = when (Md.kind) {
@@ -183,7 +181,7 @@ fun Modifier.mdPanel(shape: Shape = mdShape(), fill: Color = mdSurface(), strong
             val bg: Brush = if (fill == p.card && !dark) Brush.verticalGradient(listOf(Color(0xFFFFF8EC), Color(0xFFFFF0F4))) else SolidColor(fill)
             this.shadow(if (strong) 16.dp else 3.dp, shape, ambientColor = p.pink, spotColor = p.pink)
                 .clip(shape).background(bg)
-                .border(if (strong) 2.5.dp else 1.5.dp, if (dark) p.mint.copy(alpha = 0.5f) else CreamMint.copy(alpha = if (strong) 1f else 0.7f), shape)
+                .border(if (strong) 2.5.dp else 1.5.dp, if (dark) p.mint.copy(alpha = 0.5f) else p.edge.copy(alpha = if (strong) 1f else 0.7f), shape)
         }
         MdKind.COMIC -> {
             val ink = mdOutline()
@@ -191,7 +189,7 @@ fun Modifier.mdPanel(shape: Shape = mdShape(), fill: Color = mdSurface(), strong
                 .clip(shape).background(fill).border(if (strong) 3.dp else 2.dp, ink, shape)
         }
         MdKind.LINE -> this.clip(shape).background(fill)
-            .border(1.dp, if (strong) Color(0xFF71BCA8) else (if (dark) p.line else Color(0xFF71BCA8).copy(alpha = 0.45f)), shape)
+            .border(1.dp, if (strong) p.edgeDeep else (if (dark) p.line else p.edgeDeep.copy(alpha = 0.45f)), shape)
         MdKind.PIXEL -> this.hardShadow(shape, Color.Black.copy(alpha = 0.35f), 4.dp, 4.dp)
             .clip(shape).background(fill).border(3.dp, WoodDark, shape)
             .padding(3.dp).border(2.dp, WoodLight, CutCornerShape(3.dp))
@@ -215,6 +213,7 @@ fun MdButton(
     val p = P
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
+    val press = rememberMdPress(src)
     val shape = when (k) {
         MdKind.CREAM -> RoundedCornerShape(50)
         MdKind.COMIC -> RoundedCornerShape(12.dp)
@@ -245,7 +244,8 @@ fun MdButton(
     val gloss = k == MdKind.CREAM && (role == MdRole.SOLID || role == MdRole.PRIMARY)
     Row(
         modifier
-            .graphicsLayer { if (pressed && k == MdKind.CREAM) { scaleX = 0.95f; scaleY = 0.95f } }
+            // 按下缩小、松开回弹（所有风格）；漫画 / 像素再往右下压一下，像按进去
+            .mdPressScale(press)
             .offset { if (pressed && hard) IntOffset(2.dp.roundToPx(), 2.dp.roundToPx()) else IntOffset.Zero }
             .then(if (hard && !pressed) Modifier.hardShadow(shape, if (k == MdKind.PIXEL) Color.Black.copy(alpha = 0.35f) else ink, 2.dp, 2.dp) else Modifier)
             .clip(shape).background(bg)
@@ -255,7 +255,9 @@ fun MdButton(
                 drawRoundRect(Color.White.copy(alpha = 0.35f), Offset(size.width * 0.1f, size.height * 0.14f),
                     Size(size.width * 0.28f, size.height * 0.2f), CornerRadius(size.height))
             } else Modifier)
-            .clickable(src, LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
+            // 长按：手指处灰色涟漪慢慢扩散
+            .mdPressRipple(press, shape, if (k == MdKind.PIXEL) 3f else 0f)
+            .clickable(src, null, enabled = enabled, role = Role.Button, onClick = onClick)
             .alpha(if (enabled) 1f else 0.45f)
             .defaultMinSize(minHeight = if (role == MdRole.PLAIN) 36.dp else 40.dp)
             .padding(if (role == MdRole.PLAIN) PaddingValues(horizontal = 10.dp, vertical = 6.dp) else contentPadding),
@@ -278,8 +280,9 @@ fun MdFab(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, m
     val shape = if (k == MdKind.PIXEL) CutCornerShape(6.dp) else CircleShape
     val fill = when (k) { MdKind.LINE -> mdSurface(); MdKind.PIXEL -> PixelGold; else -> p.mint }
     val tint = when (k) { MdKind.LINE -> p.mint; MdKind.PIXEL -> WoodDark; else -> Color.White }
+    val press = rememberMdPress()
     Box(
-        modifier.size(58.dp)
+        modifier.mdPressScale(press).size(58.dp)
             .drawWithContent {
                 drawContent()
                 if (k == MdKind.LINE) {
@@ -309,7 +312,8 @@ fun MdFab(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, m
                 drawRoundRect(Color.White.copy(alpha = 0.4f), Offset(size.width * 0.22f, size.height * 0.14f),
                     Size(size.width * 0.3f, size.height * 0.14f), CornerRadius(size.height))
             } else Modifier)
-            .clickable(role = Role.Button, onClickLabel = desc, onClick = onClick),
+            .mdPressRipple(press, shape)
+            .clickable(press.src, null, role = Role.Button, onClickLabel = desc, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { androidx.compose.material3.Icon(icon, desc, Modifier.size(28.dp), tint = tint) }
 }
@@ -420,7 +424,7 @@ private fun MdTitle(content: @Composable () -> Unit) {
     when (Md.kind) {
         MdKind.CREAM -> Row(verticalAlignment = Alignment.CenterVertically) {
             // 小铃铛：红项圈上的金铃
-            Box(Modifier.size(10.dp).clip(CircleShape).background(PixelGold).border(1.5.dp, Color(0xFFE5606F), CircleShape))
+            Box(Modifier.size(10.dp).clip(CircleShape).background(PixelGold).border(1.5.dp, p.mint, CircleShape))
             Spacer(Modifier.width(8.dp))
             CompositionLocalProvider(LocalTextStyle provides base.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = p.ink)) { content() }
         }

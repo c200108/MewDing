@@ -263,8 +263,9 @@ fun StepperRow(title: String, value: Int, step: Int, min: Int, max: Int, unit: S
 fun RoundIcon(icon: ImageVector, size: Dp = 32.dp, onClick: () -> Unit) {
     val k = Md.kind
     val shape = when (k) { MdKind.PIXEL -> androidx.compose.foundation.shape.CutCornerShape(3.dp); MdKind.COMIC -> RoundedCornerShape(size * 0.3f); else -> RoundedCornerShape(size / 2) }
+    val press = rememberMdPress()
     Box(
-        Modifier.size(size).clip(shape)
+        Modifier.mdPressScale(press).size(size).clip(shape)
             .background(when (k) { MdKind.PIXEL -> MdParchment; MdKind.COMIC -> MdYellow; MdKind.LINE -> Color.Transparent; else -> P.mintSoft })
             .then(when (k) {
                 MdKind.PIXEL -> Modifier.border(2.dp, MdWoodDark, shape)
@@ -272,7 +273,8 @@ fun RoundIcon(icon: ImageVector, size: Dp = 32.dp, onClick: () -> Unit) {
                 MdKind.LINE -> Modifier.border(1.dp, P.mint, shape)
                 else -> Modifier
             })
-            .clickable(onClick = onClick),
+            .mdPressRipple(press, shape)
+            .mdClick(press, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { MdIcon(icon, null, Modifier.size(size * 0.55f), if (k == MdKind.PIXEL) MdWoodDark else if (k == MdKind.COMIC) MdInk else P.mintDeep) }
 }

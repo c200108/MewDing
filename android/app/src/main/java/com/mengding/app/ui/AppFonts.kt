@@ -46,9 +46,21 @@ import java.util.zip.ZipInputStream
  */
 object AppFonts {
     /** 一个下载地址；sha256 不为空时，下下来的文件必须和它一致（镜像上的文件钉死版本 + 校验，防止被换掉） */
-    data class Src(val url: String, val sha256: String? = null) {
+    /** entry：压缩包里要哪个文件（按文件名结尾匹配）；null = 第一个 .ttf / .otf */
+    data class Src(val url: String, val sha256: String? = null, val entry: String? = null) {
         val zipped get() = url.endsWith(".zip")
     }
+
+    /** GitHub Releases 上的文件：先直连，不通再走加速镜像（和在线更新同一组镜像） */
+    private fun release(url: String, sha256: String? = null, entry: String? = null) =
+        listOf(Src(url, sha256, entry)) + com.mengding.app.logic.Updater.mirrorPrefixes.map { Src(it + url, sha256, entry) }
+
+    /** Google Fonts 仓库里的字体（钉死提交），jsDelivr 优先 */
+    private const val GF = "86aced91de05cd4f96a06838124cca45be337b2b"
+    private fun googleFont(path: String, sha256: String) = listOf(
+        Src("https://cdn.jsdelivr.net/gh/google/fonts@$GF/ofl/$path", sha256),
+        Src("https://raw.githubusercontent.com/google/fonts/$GF/ofl/$path", sha256),
+    )
 
     data class Option(
         val key: String, val name: String, val desc: String, val sizeMb: Double,
@@ -79,13 +91,55 @@ object AppFonts {
                 "8d6ba638ac9553413354cfaab97637c1cd778444e259441ea1e5f8fb2c697fba"),
             Src("https://github.com/lxgw/LxgwWenKai-Lite/releases/download/v1.522/LXGWWenKaiLite-Regular.ttf"),
         ), "落霞孤鹜 · LXGW WenKai"),
+        Option("glow", "未来荧黑", "圆润清新的黑体", 9.1, listOf(
+            Src("https://cdn.jsdelivr.net/npm/@fontpkg/glow-sans-sc@0.93.2/GlowSansSC-Normal-Regular.otf",
+                "ca7d34947401b2fa6dd4fd46676d970a8cc47a40ee60c022eb7dd5068bee67ff"),
+        ) + release("https://github.com/welai/glow-sans/releases/download/v0.93/GlowSansSC-Normal-v0.93.zip", entry = "GlowSansSC-Normal-Regular.otf"),
+            "welai · Glow Sans"),
+        Option("xiaowei", "站酷小薇 LOGO 体", "文艺清新的标题字", 6.3,
+            googleFont("zcoolxiaowei/ZCOOLXiaoWei-Regular.ttf", "a42b620140f493db42f741351dfbf343c0936d58588ee8004b8b2a218d997ff1"),
+            "站酷 · ZCOOL XiaoWei"),
+        Option("huangyou", "站酷庆科黄油体", "圆胖可爱的标题字", 8.3,
+            googleFont("zcoolqingkehuangyou/ZCOOLQingKeHuangYou-Regular.ttf", "54f0c0df4308cd74cd0f2fd3494ae054dbc4a1fd6fa7d71f4807eb4cdd8b4136"),
+            "站酷 · ZCOOL QingKe HuangYou"),
+        Option("chill", "寒蝉团圆体", "软萌的圆体", 4.1,
+            release("https://github.com/Warren2060/ChillReunion/releases/download/v2.700/ChillReunion_v2.7.zip",
+                "f130556ff14434fe2180fb8b070bad05e89f0736abdf11dc425a434ac4d30460", "ChillReunion_Round.otf"),
+            "寒蝉 · ChillReunion"),
+        Option("yozai", "悠哉字体", "圆润的手写感", 15.6,
+            release("https://github.com/lxgw/yozai-font/releases/download/v0.868/Yozai-Regular.ttf",
+                "25071998a0fe6a72f54c235e714986d259633e5ff670b1a2b5e264387f3316ac"),
+            "落霞孤鹜 · Yozai"),
+        Option("xiaolai", "小赖字体", "活泼的手写体，文件很大", 22.2,
+            release("https://github.com/lxgw/kose-font/releases/download/v3.126/Xiaolai-Regular.ttf",
+                "e2f68daf0e72777a8cf58bc83de1b98634b251e537ddbfca24b0ae50d1802da2"),
+            "落霞孤鹜 · Xiaolai"),
+        Option("ark", "方舟像素 12px", "清晰的像素字，适合像素风（压缩包，解压后约 5MB）", 37.2,
+            release("https://github.com/TakWolf/ark-pixel-font/releases/download/2026.10.25/ark-pixel-font-12px-proportional-ttf-v2026.10.25.zip",
+                "2a422d233e07c8ee8fce9341946c3309d68007930fa979ec56f50fb0dcc5416f", "ark-pixel-12px-proportional-zh_hans.ttf"),
+            "TakWolf · Ark Pixel Font"),
     )
 
     fun of(key: String) = all.firstOrNull { it.key == key } ?: all[0]
 
     private fun dir(ctx: Context) = File(ctx.filesDir, "fonts").also { it.mkdirs() }
     fun file(ctx: Context, key: String) = File(dir(ctx), "$key.ttf")
-    fun has(ctx: Context, key: String) = key == "system" || file(ctx, key).let { it.exists() && it.length() > 10_000 }
+    /** 已下载并且能当字体打开。打不开的（比如旧版本下载到一半被打断留下的半截文件）直接删掉，免得预览时把界面弄崩 */
+    fun has(ctx: Context, key: String): Boolean {
+        if (key == "system") return true
+        val f = file(ctx, key)
+        if (!f.exists() || f.length() <= 10_000) return false
+        val sig = "${f.length()}-${f.lastModified()}"
+        checked[key]?.let { if (it.first == sig) return it.second }
+        val ok = loadable(f)
+        if (!ok) f.delete()
+        checked[key] = sig to ok
+        return ok
+    }
+    private val checked = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Boolean>>()
+
+    /** 和 Compose 加载字体文件用同一种方式（Typeface.Builder）：打不开时 build() 返回 null，不会悄悄换成默认字体 */
+    private fun loadable(f: File) = runCatching { Typeface.Builder(f).build() != null }.getOrDefault(false)
 
     /** 当前用的字体（Compose）；null = 系统默认 */
     val family = MutableStateFlow<FontFamily?>(null)
@@ -133,33 +187,39 @@ object AppFonts {
                     }
                 }
                 c.disconnect()
-                if (src.zipped) {
-                    // 压缩包里挑第一个 .ttf
+                // 解压、校验都在临时文件上做，全部通过才改名成正式文件：
+                // 字体页会预览已下载的字体，半截文件被拿去预览会让界面崩掉
+                val unz = File(dir(ctx), "${o.key}.unz")
+                val cand = if (src.zipped) {
+                    // 压缩包里挑指定的那个字体文件（没指定就挑第一个 .ttf / .otf；跳过 __MACOSX 里的元数据）
                     var ok = false
                     ZipInputStream(tmp.inputStream()).use { z ->
                         while (true) {
                             val e = z.nextEntry ?: break
-                            if (!e.isDirectory && e.name.lowercase().endsWith(".ttf")) {
-                                target.outputStream().use { z.copyTo(it) }
+                            val n = e.name
+                            val want = src.entry?.let { n.endsWith(it) } ?: n.lowercase().let { it.endsWith(".ttf") || it.endsWith(".otf") }
+                            if (!e.isDirectory && want && !n.contains("__MACOSX")) {
+                                unz.outputStream().use { z.copyTo(it) }
                                 ok = true; break
                             }
                         }
                     }
                     tmp.delete()
-                    if (!ok) { lastErr = "压缩包里没有字体"; continue }
-                } else {
-                    target.delete(); tmp.renameTo(target)
-                }
+                    if (!ok) { unz.delete(); lastErr = "压缩包里没有字体"; continue }
+                    unz
+                } else tmp
                 // 校验：镜像上的文件要和记下的 SHA-256 一致
                 val want = src.sha256
-                if (want != null && sha256(target) != want) { target.delete(); lastErr = "下载的文件校验不对"; continue }
+                if (want != null && sha256(cand) != want) { cand.delete(); lastErr = "下载的文件校验不对"; continue }
                 // 校验：能当字体打开才算下好
-                val good = runCatching { Typeface.createFromFile(target) }.isSuccess && target.length() > 10_000
-                if (!good) { target.delete(); lastErr = "下载的文件不是可用的字体"; continue }
+                val good = loadable(cand) && cand.length() > 10_000
+                if (!good) { cand.delete(); lastErr = "下载的文件不是可用的字体"; continue }
+                target.delete()
+                if (!cand.renameTo(target)) { cand.delete(); lastErr = "保存字体失败"; continue }
                 return@withContext null
             } catch (e: Exception) {
                 lastErr = "下载失败：${e.javaClass.simpleName}"
-                tmp.delete()
+                tmp.delete(); File(dir(ctx), "${o.key}.unz").delete()
             }
         }
         lastErr
@@ -254,7 +314,7 @@ fun FontPage() {
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text("以上字体都是开源字体（SIL Open Font License 1.1），可以免费使用；下载地址是作者的 GitHub 或它的国内镜像 jsDelivr。",
+        Text("以上字体都是开源字体（SIL Open Font License 1.1），可以免费使用；从作者的 GitHub、jsDelivr 或下载加速镜像下载，下完会校验文件。",
             fontSize = 11.sp, color = P.sub)
     }
 }

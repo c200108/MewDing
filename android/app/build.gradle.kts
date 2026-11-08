@@ -23,8 +23,8 @@ android {
         applicationId = "com.mengding.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 35
-        versionName = "4.0.8-test"
+        versionCode = 36
+        versionName = "4.0.9-test"
         // 首页 3D 小屋的 Unity 运行库只带 64 位 ARM（真机）；调试包另外带 x86_64 方便电脑模拟器
         ndk { abiFilters += listOf("arm64-v8a") }
     }

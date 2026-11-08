@@ -57,6 +57,21 @@ object UnityHost {
     var expanded by mutableStateOf(false)
         private set
 
+    /** HD-2D 小镇报上来的头顶位置（Unity 画面里归一化的 x、y，h = 身高占画面高的比例，right = 朝右）。App 照着它画气泡 */
+    data class Head(val x: Float, val y: Float, val h: Float, val right: Boolean)
+    var petHead by mutableStateOf<Head?>(null)
+        private set
+    /** 正在说话的小镇居民（没在说话时为 null） */
+    var resHead by mutableStateOf<Head?>(null)
+        private set
+    /** 小镇居民说的话（文字, 时间） */
+    var resSay by mutableStateOf<Pair<String, Long>?>(null)
+        private set
+
+    private fun head(a: JSONArray?): Head? = a?.takeIf { it.length() >= 4 }?.let {
+        Head(it.optDouble(0).toFloat(), it.optDouble(1).toFloat(), it.optDouble(2).toFloat(), it.optInt(3) == 1)
+    }
+
     private val _events = MutableSharedFlow<JSONObject>(extraBufferCapacity = 32)
     /** Unity 发回来的事件（JSON，字段 evt 是事件名） */
     val events: SharedFlow<JSONObject> = _events
@@ -184,9 +199,15 @@ object UnityHost {
     // ---------- Unity 发回来 ----------
 
     internal fun onMessage(raw: String) = main.post {
-        Log.d(TAG, "← $raw")
         val evt = runCatching { JSONObject(raw) }.getOrNull() ?: return@post
+        // 头顶位置每秒最多 20 条，不写日志、不往外发事件
+        if (evt.optString("evt") == "head") {
+            petHead = head(evt.optJSONArray("p")); resHead = head(evt.optJSONArray("r"))
+            return@post
+        }
+        Log.d(TAG, "← $raw")
         when (evt.optString("evt")) {
+            "say" -> if (evt.optString("source") == "res") resSay = evt.optString("text") to System.currentTimeMillis()
             "ready" -> {
                 ready = true
                 // Unity 刚起来（或场景重载）：把缓存的常态、数值、天气补发一遍；展开状态也同步过去

@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -105,6 +106,16 @@ fun HomeScreen() {
         weather = if (weatherOn) { weather ?: "定位中…" ; Weather.local(ctx) } else null
     }
     LaunchedEffect(bubble) { if (bubble != null) { delay(3500); bubble = null } }
+    // 宠物隔 1～3 分钟（随机）按当前状态冒一个像素表情：开心 → 大笑 / 爱心，饿了渴了 → 生气，累了难过 → 哭……睡着时不冒
+    val petIdForEmote = pet?.id
+    LaunchedEffect(petIdForEmote) {
+        while (petIdForEmote != null) {
+            delay(kotlin.random.Random.nextLong(60_000, 180_001))
+            val p = PetSim.outing(Store.cfg) ?: continue
+            if (p.sleeping || bubble != null || !com.mengding.app.pet.Emotes.has(ctx, p.species)) continue
+            bubble = com.mengding.app.logic.BubbleText.encode("", com.mengding.app.logic.PetMood.emotes(com.mengding.app.logic.PetMood.of(p)).random())
+        }
+    }
     // 完成自定义提醒等：宠物冒一句夸奖
     val said by PetFx.said.collectAsState()
     LaunchedEffect(said) { said?.let { (text, at) -> if (Time.now() - at < 5000) bubble = text } }
@@ -191,17 +202,21 @@ fun HomeScreen() {
             }
         }
         // 换了衣服不用再单独发指令：setPet 带着 outfits 过去，Unity 发现变了就在衣柜前换（衣柜没开会先走过去开）
-        LaunchedEffect(bubble) { bubble?.let { com.mengding.app.logic.BubbleText.plain(it).takeIf { s -> s.isNotBlank() }?.let { s -> UnityHost.say(s) } } }
+        // 3D 小屋的气泡由 Unity 画；HD-2D 小镇的气泡由 App 自己画在场景上面（Hd2dBubbles），不用发过去
+        LaunchedEffect(bubble) { if (!hd2dHome) bubble?.let { com.mengding.app.logic.BubbleText.plain(it).takeIf { s -> s.isNotBlank() }?.let { s -> UnityHost.say(s) } } }
         LaunchedEffect(pet.species) {
             UnityHost.events.collect { evt ->
                 when (evt.optString("evt")) {
                     // 在房间里被摸醒 / 点地面叫醒：App 这边也把「沉睡」状态解除，首页文字跟着变
                     "woken" -> Actions.wakeByTouch(ctx)
+                    // 小镇里宠物自己说的话（被叫醒、衣柜开了……）：HD-2D 由 App 画气泡
+                    "say" -> if (hd2dHome && evt.optString("source") == "pet") evt.optString("text").takeIf { it.isNotBlank() }?.let { bubble = it }
                     "wardrobe_opened" -> if (wardrobeWaiting) { wardrobeWaiting = false; inventory = "outfit" }
                     "petted" -> {
                         Actions.petPet(ctx)
                         PetVoice.play(ctx, pet.species)
-                        UnityHost.say(Speech.phrase())
+                        if (hd2dHome) bubble = Speech.bubble(pet, com.mengding.app.pet.Emotes.has(ctx, pet.species))
+                        else UnityHost.say(Speech.phrase())
                     }
                     // 点房间里的家具 = 点首页对应的按钮
                     "prop_tap" -> when (evt.optString("prop")) {
@@ -456,6 +471,8 @@ fun PetStage(
         // 3D 小屋自己处理点击（摸宠物、点地板走过去）；2D 场景还是原来的点按 / 长按
         // 场景直接铺满相框内区，不再垫深色底和内边距（0.3.11 那圈深色就是"黑条"）；展开全屋时相框原地铺满首页
         if (use3d) UnityStage(Modifier.fillMaxSize())
+        // HD-2D 小镇：气泡用和 2D 场景同一套画法画在 Unity 画面上面，跟着 Unity 报上来的头顶位置走
+        if (use3d && UnityHost.launchStyle == "hd2d") Hd2dBubbles(bubble, species, cfg.settings.bubbleStyle, Modifier.matchParentSize())
         // 2D 场景没有宠物出门时，画家里那只在睡觉（只展示）
         else LiveScene(key, species, action, outfits, rain = Weather.rainy(code), modifier = Modifier.fillMaxSize(), bubble = bubble,
             bubbleStyle = cfg.settings.bubbleStyle, tap = sceneTap)
@@ -617,7 +634,7 @@ private fun ModuleRow() {
         ModuleButton("解压游戏", ui.games, Ic.Game) { Nav.go("games") }
         // 「宠物部屋」始终进原来的部屋页；全屋场景从相框的「更多 ›」进
         ModuleButton("宠物部屋", ui.pet, Ic.Room) { Nav.go("room") }
-        ModuleButton("提醒设置", ui.today, Ic.Bell) { Nav.go("reminders") }
+        ModuleButton("提醒设置", ui.remind ?: ui.today, Ic.Bell) { Nav.go("reminders") }
     }
 }
 
@@ -632,7 +649,8 @@ private fun QuickShopRow(onOpen: (String) -> Unit) {
                     android.graphics.BitmapFactory.decodeStream(s, null, android.graphics.BitmapFactory.Options().apply { inScaled = false })!!
                 }.asImageBitmap()
             }
-            Box(Modifier.weight(1f).height(36.dp).clickable { onOpen(cat) }) {
+            // 和其他按钮一样：按下缩小回弹，长按灰色涟漪——这里用像素方块拼的涟漪，贴合像素按钮
+            Box(Modifier.weight(1f).height(36.dp).mdPressable(androidx.compose.ui.graphics.RectangleShape, pixelBlockDp = 3f) { onOpen(cat) }) {
                 Image(img, label, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds,
                     filterQuality = androidx.compose.ui.graphics.FilterQuality.None)
                 Text(label, Modifier.align(Alignment.CenterEnd).padding(end = 14.dp, bottom = 2.dp),
@@ -645,7 +663,7 @@ private fun QuickShopRow(onOpen: (String) -> Unit) {
 @Composable
 private fun ModuleButton(label: String, art: Int?, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Column(
-        Modifier.width(78.dp).clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
+        Modifier.width(78.dp).clip(RoundedCornerShape(18.dp)).mdPressable(RoundedCornerShape(18.dp), onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (art != null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(art), label, Modifier.size(54.dp))
@@ -739,4 +757,52 @@ private fun androidx.compose.foundation.layout.BoxScope.ExpandedChrome(name: Str
 private fun RoomChip(label: String, onClick: () -> Unit) {
     Text(label, Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xE6FFFFFF)).clickable(onClick = onClick)
         .padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 13.sp, color = P.ink)
+}
+
+/**
+ * HD-2D 小镇的说话气泡：宠物（App 这边的 bubble，可带像素表情）和正在说话的居民各一个。
+ * 尺寸、换行、内边距、最大宽度都和 2D 场景一样（SceneBubble），位置用 Unity 每秒最多 20 次报上来的头顶坐标。
+ */
+@Composable
+private fun Hd2dBubbles(bubble: String?, species: String, bubbleStyle: String, modifier: Modifier) {
+    val ctx = LocalContext.current
+    val petTalk = remember { SceneBubble() }
+    val resTalk = remember { SceneBubble() }
+    val emoteSheet = remember(species) { com.mengding.app.pet.Emotes.sheet(ctx, species) }
+    val parts = remember(bubble) { com.mengding.app.logic.BubbleText.parse(bubble) }
+    val res = UnityHost.resSay
+    // 居民的话显示 3.5 秒
+    var resText by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(res) { res?.let { resText = it.first; delay(3500); resText = null } }
+    var t by remember { mutableStateOf(0.0) }
+    val active = bubble != null || resText != null
+    // 时钟只往前走（气泡用它算弹出动画和表情帧，倒回去会让新气泡一直「还没弹出来」）
+    val t0 = remember { System.nanoTime() }
+    LaunchedEffect(active) {
+        while (active) androidx.compose.runtime.withFrameNanos { t = (it - t0) / 1e9 }
+    }
+    val skin = BubbleSkins.of(ctx, bubbleStyle)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val d = density.density; val sp = density.fontScale * d
+    val bounds = remember { android.graphics.RectF() }
+    androidx.compose.foundation.Canvas(modifier) {
+        @Suppress("UNUSED_EXPRESSION") t
+        val nc = drawContext.canvas.nativeCanvas
+        // 左上名字牌、右上萌度牌那一条不放气泡；底下留出喇叭和「更多」
+        bounds.set(6 * d, 50 * d, size.width - 6 * d, size.height - 26 * d)
+        val ph = UnityHost.petHead
+        if (bubble != null && ph != null) {
+            val petH = ph.h * size.height
+            val emo = parts.first?.takeIf { emoteSheet != null }
+            // 小镇里宠物画得比 2D 场景小：身宽至少按 64dp 算（气泡最宽约 2 个身宽），带表情时一行也能放下 6 个字左右
+            petTalk.draw(nc, parts.second, t, ph.x * size.width, ph.y * size.height, maxOf(petH * .85f, 64 * d), petH, ph.right, bounds, d, sp, skin,
+                emote = if (emo != null) emoteSheet else null, emoteCol = emo?.col ?: 0)
+        } else petTalk.draw(nc, null, t, 0f, 0f, 0f, 0f, false, bounds, d, d)
+        val rh = UnityHost.resHead
+        val rt = resText
+        if (rt != null && rh != null) {
+            val h = rh.h * size.height
+            resTalk.draw(nc, rt, t, rh.x * size.width, rh.y * size.height, maxOf(h * .85f, 64 * d), h, rh.right, bounds, d, sp, skin)
+        } else resTalk.draw(nc, null, t, 0f, 0f, 0f, 0f, false, bounds, d, d)
+    }
 }

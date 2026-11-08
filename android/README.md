@@ -41,5 +41,6 @@ gradlew.bat assembleRelease
 
 ## 签名
 
+`keystore.properties` 和 `keystore/mengding-release.jks` 是正式签名，**一定要备份好**：
 以后每一版都必须用同一把钥匙签名，丢了的话新版就没法覆盖安装，只能先卸载（会清空用户数据）。
 这两个文件不要发给别人、不要传到网上。

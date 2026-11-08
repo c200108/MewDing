@@ -143,6 +143,8 @@ internal class AdvGame(private val texts: List<String>) {
     private var tallyAcc = 0f
     var onClear: (Int) -> Unit = {}
     var onOver: (Int) -> Unit = {}
+    /** 一局真正结束（三条命用完 / 通过全部关卡）时调一次：本局吃到的金币总数、是否通关。萌点只在这里结算 */
+    var onFinish: (coins: Int, win: Boolean) -> Unit = { _, _ -> }
     /** 音效回调（GameAudio.play） */
     var sfx: (String) -> Unit = {}
     val levels get() = texts.size
@@ -235,7 +237,7 @@ internal class AdvGame(private val texts: List<String>) {
                 if (phaseT < 2.1f) { p.vy += 40f * dt; p.y += p.vy * dt }
                 if (phaseT <= 0) {
                     lives--
-                    if (lives <= 0) { phase = AP.OVER; onOver(score) } else { big = false; load(levelNo) }
+                    if (lives <= 0) { phase = AP.OVER; onOver(score); onFinish(coinsTotal, false) } else { big = false; load(levelNo) }
                 }
             }
             AP.CLEAR -> clear(dt)
@@ -463,7 +465,7 @@ internal class AdvGame(private val texts: List<String>) {
                 phaseT -= dt
                 if (phaseT <= 0) {
                     onClear(levelNo)
-                    if (levelNo < levels) load(levelNo + 1) else { phase = AP.WIN; onOver(score) }
+                    if (levelNo < levels) load(levelNo + 1) else { phase = AP.WIN; onOver(score); onFinish(coinsTotal, true) }
                 }
             }
         }
@@ -598,19 +600,17 @@ fun AdvGamePage() {
     val toast = toaster()
     var newBest by remember { mutableStateOf(false) }
     var tick by remember { mutableLongStateOf(0L) }
-    // 萌点结算（2 枚金币 = 1 萌点，每天一次）：过关、结束、或者中途离开页面，哪个先到就按当时吃到的金币结算一次
-    var settled by remember { mutableStateOf(false) }
-    fun settle(why: String) {
-        if (settled || game.coinsTotal <= 0) return
-        settled = true
-        toast(claimGamePoints("adv", com.mengding.app.logic.Economy.advPoints(game.coinsTotal), "$why，共吃到 ${game.coinsTotal} 枚金币"))
+    // 萌点结算（2 枚金币 = 1 萌点，每天一次）：只在一局结束时——三条命用完，或者通过全部关卡——按这一局吃到的金币总数结算。
+    // 中途过关、中途离开都不结算
+    var result by remember { mutableStateOf<String?>(null) }
+    game.onOver = { newBest = GameScores.submit("adv", it) }
+    game.onFinish = { coins, win ->
+        val pts = com.mengding.app.logic.Economy.advPoints(coins)
+        val msg = claimGamePoints("adv", pts, if (win) "全部通关，共吃到 $coins 枚金币" else "挑战结束，共吃到 $coins 枚金币")
+        result = msg
+        toast(msg)
     }
-    game.onClear = { n -> settle("1-$n 过关") }
-    game.onOver = {
-        newBest = GameScores.submit("adv", it)
-        settle("这局结束")
-    }
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { GameScores.submit("adv", game.score); settle("离开游戏") } }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { GameScores.submit("adv", game.score) } }
     game.sfx = { GameAudio.play(it) }
     LaunchedEffect(Unit) {
         var last = 0L
@@ -663,13 +663,17 @@ fun AdvGamePage() {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         when (game.phase) {
-                            AP.OVER -> {
-                                Text("游戏结束", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = P.ink)
+                            AP.OVER, AP.WIN -> {
+                                Text(if (game.phase == AP.WIN) "全部通关！" else "挑战结束", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = P.ink)
                                 Text("得分 ${game.score}" + if (newBest) "  新纪录！" else "", fontSize = 15.sp, color = P.pink)
-                            }
-                            AP.WIN -> {
-                                Text("全部通关！", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = P.ink)
-                                Text("得分 ${game.score}" + if (newBest) "  新纪录！" else "", fontSize = 15.sp, color = P.pink)
+                                Gap(6.dp)
+                                HRow(gap = 4.dp) {
+                                    PixelImg("adv_coin_0", 18.dp)
+                                    Text("吃到 ${game.coinsTotal} 枚金币 → ${com.mengding.app.logic.Economy.advPoints(game.coinsTotal)} 萌点",
+                                        fontSize = 13.sp, color = P.ink)
+                                }
+                                // 「萌点 +18（这个游戏今天就领这一次）」/「今天这个游戏已经领过萌点，明天再来」
+                                result?.let { Text(it.substringAfter("金币，"), fontSize = 12.sp, color = P.sub, textAlign = TextAlign.Center) }
                             }
                             else -> {
                                 PixelImg("ui_icon_adv", 52.dp)
@@ -680,7 +684,7 @@ fun AdvGamePage() {
                         Gap(10.dp)
                         // 不选关：总是从第一关开始，过关自动进下一关；命用完了就从第一关重来
                         PrimaryButton(when (game.phase) { AP.OVER -> "从第一关重来"; AP.WIN -> "再玩一遍"; else -> "开始" }) {
-                            game.newGame(1); newBest = false; settled = false; started = true; paused = false
+                            game.newGame(1); newBest = false; result = null; started = true; paused = false
                         }
                     }
                 }

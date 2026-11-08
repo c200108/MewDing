@@ -124,10 +124,10 @@ fun Modifier.mdBar(top: Boolean = true): Modifier {
             val shape = if (top) RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp) else RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
             this.shadow(10.dp, shape, ambientColor = p.pink, spotColor = p.pink).clip(shape)
                 .background(if (dark) SolidColor(p.card) else Brush.verticalGradient(listOf(Color(0xFFFFF8EC), Color(0xFFFFF0F4))))
-                .border(1.5.dp, if (dark) p.mint.copy(alpha = 0.4f) else Color(0xFF8FD3C1), shape)
+                .border(1.5.dp, if (dark) p.mint.copy(alpha = 0.4f) else p.edge, shape)
         }
         MdKind.COMIC -> this.background(mdSurface()).edge(mdOutline(), 2.5.dp)
-        MdKind.LINE -> this.background(mdSurface()).edge(Color(0xFF71BCA8).copy(alpha = 0.6f), 1.dp)
+        MdKind.LINE -> this.background(mdSurface()).edge(p.edgeDeep.copy(alpha = 0.6f), 1.dp)
         MdKind.PIXEL -> this.background(MdWoodDark).edge(MdWoodLight, 3.dp)
     }
 }
@@ -159,7 +159,7 @@ fun RowScope.MdNavItem(selected: Boolean, label: String, icon: ImageVector, art:
         else -> p.sub
     }
     Column(
-        Modifier.weight(1f).clickable(onClick = onClick).padding(vertical = 5.dp),
+        Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).mdPressable(RoundedCornerShape(16.dp), onClick = onClick).padding(vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val box = when (k) {
@@ -195,9 +195,10 @@ fun MdBackButton(onClick: () -> Unit) {
     val k = Md.kind
     val p = P
     val shape: Shape = when (k) { MdKind.COMIC -> RoundedCornerShape(10.dp); MdKind.PIXEL -> CutCornerShape(3.dp); else -> CircleShape }
+    val press = rememberMdPress()
     Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
         Box(
-            Modifier.size(if (k == MdKind.LINE) 44.dp else 38.dp)
+            Modifier.mdPressScale(press).size(if (k == MdKind.LINE) 44.dp else 38.dp)
                 .then(if (k == MdKind.COMIC) Modifier.hardShadow(shape, mdOutline(), 2.dp, 2.dp) else Modifier)
                 .clip(shape)
                 .background(when (k) { MdKind.CREAM -> p.mintSoft; MdKind.COMIC -> mdSurface(); MdKind.PIXEL -> MdParchment; else -> Color.Transparent })
@@ -206,7 +207,8 @@ fun MdBackButton(onClick: () -> Unit) {
                     MdKind.PIXEL -> Modifier.border(2.dp, MdWoodDark, shape)
                     else -> Modifier
                 })
-                .clickable(onClick = onClick),
+                .mdPressRipple(press, shape)
+                .mdClick(press, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) { MdIcon(Ic.Back, "返回", Modifier.size(if (k == MdKind.LINE) 22.dp else 20.dp), if (k == MdKind.PIXEL) MdWoodDark else p.ink) }
     }
@@ -236,10 +238,11 @@ fun MdPageTitle(title: String, modifier: Modifier = Modifier) {
 /** 顶栏：返回键 + 标题 + 右侧按钮；线条风下面一道细线 */
 @Composable
 fun MdTopBar(title: String, onBack: (() -> Unit)?, actions: @Composable RowScope.() -> Unit = {}) {
+    val topEdge = P.edgeDeep
     Row(
         Modifier.fillMaxWidth().height(58.dp)
             .then(if (Md.kind == MdKind.LINE) Modifier.drawBehind {
-                drawLine(Color(0xFF71BCA8).copy(alpha = 0.35f), Offset(0f, size.height - 1f), Offset(size.width, size.height - 1f), 1.dp.toPx())
+                drawLine(topEdge.copy(alpha = 0.35f), Offset(0f, size.height - 1f), Offset(size.width, size.height - 1f), 1.dp.toPx())
             } else Modifier)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -255,7 +258,8 @@ fun MdTopBar(title: String, onBack: (() -> Unit)?, actions: @Composable RowScope
 /** 顶栏右侧的小图标按钮 */
 @Composable
 fun MdTopIcon(icon: ImageVector, desc: String?, tint: Color, onClick: () -> Unit) {
-    Box(Modifier.size(44.dp).clip(if (Md.kind == MdKind.PIXEL) CutCornerShape(3.dp) else CircleShape).clickable(onClick = onClick),
+    val shape = if (Md.kind == MdKind.PIXEL) CutCornerShape(3.dp) else CircleShape
+    Box(Modifier.size(44.dp).clip(shape).mdPressable(shape, onClick = onClick),
         contentAlignment = Alignment.Center) { MdIcon(icon, desc, Modifier.size(22.dp), tint) }
 }
 
@@ -269,7 +273,7 @@ fun MdSectionTitle(text: String, modifier: Modifier = Modifier) {
     Row(modifier.padding(start = 4.dp, top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         when (k) {
             MdKind.CREAM -> {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(MdGold).border(1.5.dp, p.danger, CircleShape))
+                Box(Modifier.size(8.dp).clip(CircleShape).background(MdGold).border(1.5.dp, p.mint, CircleShape))
                 Spacer(Modifier.width(6.dp))
                 Text(text, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = p.sub)
             }
@@ -299,7 +303,7 @@ fun MdSectionTitle(text: String, modifier: Modifier = Modifier) {
 fun MdDivider(variant: Int = 0, modifier: Modifier = Modifier) {
     val k = Md.kind
     val p = P
-    val c = when (k) { MdKind.COMIC -> mdOutline().copy(alpha = 0.55f); MdKind.PIXEL -> MdWoodLight; MdKind.LINE -> Color(0xFF71BCA8).copy(alpha = 0.35f); else -> p.mint.copy(alpha = 0.5f) }
+    val c = when (k) { MdKind.COMIC -> mdOutline().copy(alpha = 0.55f); MdKind.PIXEL -> MdWoodLight; MdKind.LINE -> p.edgeDeep.copy(alpha = 0.35f); else -> p.mint.copy(alpha = 0.5f) }
     Box(modifier.fillMaxWidth().height(if (variant == 0) 6.dp else 14.dp).drawBehind {
         val y = size.height / 2
         when (variant) {
@@ -404,7 +408,7 @@ fun MdNoteCard(seed: String, modifier: Modifier = Modifier, content: @Composable
             })
             .clip(shape).background(fill)
             .then(when (k) {
-                MdKind.CREAM -> Modifier.border(1.5.dp, if (dark) p.mint.copy(alpha = 0.4f) else Color(0xFF8FD3C1), shape)
+                MdKind.CREAM -> Modifier.border(1.5.dp, if (dark) p.mint.copy(alpha = 0.4f) else p.edge, shape)
                 MdKind.COMIC -> Modifier.border(2.5.dp, mdOutline(), shape)
                 MdKind.LINE -> Modifier.border(1.dp, edge.copy(alpha = 0.5f), shape).drawBehind {
                     drawRect(edge, Offset.Zero, Size(size.width, 3.dp.toPx()))
@@ -449,12 +453,12 @@ fun Modifier.mdTile(selected: Boolean = false, accent: Color = P.mint, radius: D
     return when (k) {
         MdKind.CREAM -> this.shadow(if (selected) 6.dp else 2.dp, shape, ambientColor = p.pink, spotColor = p.pink).clip(shape)
             .background(if (selected) SolidColor(accent.copy(alpha = 0.16f)) else if (dark) SolidColor(p.card) else Brush.verticalGradient(listOf(Color(0xFFFFF8EC), Color(0xFFFFF0F4))))
-            .border(if (selected) 2.5.dp else 1.5.dp, if (selected) accent else (if (dark) p.line else Color(0xFF8FD3C1).copy(alpha = 0.55f)), shape)
+            .border(if (selected) 2.5.dp else 1.5.dp, if (selected) accent else (if (dark) p.line else p.edge.copy(alpha = 0.55f)), shape)
         MdKind.COMIC -> this.hardShadow(shape, mdOutline(), if (selected) 4.dp else 2.dp, if (selected) 4.dp else 2.dp).clip(shape)
             .background(if (selected) (if (dark) accent.copy(alpha = 0.3f) else MdYellow) else mdSurface())
             .border(if (selected) 2.5.dp else 2.dp, mdOutline(), shape)
         MdKind.LINE -> this.clip(shape).background(if (selected) accent.copy(alpha = 0.08f) else mdSurface())
-            .border(if (selected) 1.5.dp else 1.dp, if (selected) accent else Color(0xFF71BCA8).copy(alpha = 0.35f), shape)
+            .border(if (selected) 1.5.dp else 1.dp, if (selected) accent else p.edgeDeep.copy(alpha = 0.35f), shape)
         MdKind.PIXEL -> this.hardShadow(shape, Color.Black.copy(alpha = 0.28f), 3.dp, 3.dp).clip(shape)
             .background(if (dark) MdNight else if (selected) Color(0xFFF8EBC4) else MdParchment)
             .border(if (selected) 3.dp else 2.dp, if (selected) MdGold else MdWoodDark, shape)
@@ -557,11 +561,11 @@ fun MdMeter(value: Float, color: Color, modifier: Modifier = Modifier, warnBelow
     val p = P
     val f = (value / 100f).coerceIn(0f, 1f)
     val c = if (value < warnBelow) p.danger else color
-    val h = when (k) { MdKind.LINE -> 4.dp; MdKind.PIXEL -> 10.dp; MdKind.COMIC -> 11.dp; else -> 9.dp }
+    val h = when (k) { MdKind.LINE -> 4.dp; MdKind.PIXEL -> 10.dp; MdKind.COMIC -> 11.dp; else -> 6.dp }
     val shape: Shape = if (k == MdKind.PIXEL) CutCornerShape(2.dp) else RoundedCornerShape(50)
     Box(
         modifier.fillMaxWidth().height(h).clip(shape)
-            .background(if (k == MdKind.PIXEL) MdNight else p.line)
+            .background(when (k) { MdKind.PIXEL -> MdNight; MdKind.CREAM -> p.mintSoft.copy(alpha = 0.7f); else -> p.line })
             .then(when (k) {
                 MdKind.COMIC -> Modifier.border(1.5.dp, mdOutline(), shape)
                 MdKind.PIXEL -> Modifier.border(1.5.dp, MdWoodDark, shape)
@@ -586,8 +590,8 @@ fun MdMeter(value: Float, color: Color, modifier: Modifier = Modifier, warnBelow
                             }
                         }
                         if (k == MdKind.CREAM && w > size.height)
-                            drawRoundRect(Color.White.copy(alpha = 0.45f), Offset(size.height * 0.4f, size.height * 0.18f),
-                                Size((w - size.height * 0.8f).coerceAtLeast(0f) * 0.6f, size.height * 0.25f), CornerRadius(size.height))
+                            drawRoundRect(Color.White.copy(alpha = 0.4f), Offset(size.height * 0.5f, size.height * 0.2f),
+                                Size((w - size.height).coerceAtLeast(0f) * 0.6f, size.height * 0.22f), CornerRadius(size.height))
                     }
                 }
             },
@@ -610,9 +614,9 @@ fun Modifier.mdSheet(): Modifier {
     return this.shadow(if (k == MdKind.LINE) 4.dp else 12.dp, shape).clip(shape)
         .background(if (k == MdKind.CREAM && !dark) Brush.verticalGradient(listOf(Color(0xFFFFF8EC), Color(0xFFFFF0F4))) else SolidColor(bg))
         .then(when (k) {
-            MdKind.CREAM -> Modifier.border(2.dp, if (dark) p.mint.copy(alpha = 0.4f) else Color(0xFF8FD3C1), shape)
+            MdKind.CREAM -> Modifier.border(2.dp, if (dark) p.mint.copy(alpha = 0.4f) else p.edge, shape)
             MdKind.COMIC -> Modifier.border(3.dp, mdOutline(), shape)
-            MdKind.LINE -> Modifier.border(1.dp, Color(0xFF71BCA8).copy(alpha = 0.6f), shape)
+            MdKind.LINE -> Modifier.border(1.dp, p.edgeDeep.copy(alpha = 0.6f), shape)
             MdKind.PIXEL -> Modifier.border(3.dp, MdWoodDark, shape)
         })
 }
@@ -623,7 +627,7 @@ fun MdGrabber(modifier: Modifier = Modifier) {
     val p = P
     Box(modifier.padding(top = 8.dp).size(if (k == MdKind.PIXEL) 30.dp else 38.dp, if (k == MdKind.PIXEL) 6.dp else 5.dp)
         .clip(if (k == MdKind.PIXEL) CutCornerShape(1.dp) else RoundedCornerShape(3.dp))
-        .background(when (k) { MdKind.PIXEL -> MdWoodLight; MdKind.COMIC -> mdOutline(); MdKind.CREAM -> Color(0xFF8FD3C1); else -> p.line }))
+        .background(when (k) { MdKind.PIXEL -> MdWoodLight; MdKind.COMIC -> mdOutline(); MdKind.CREAM -> p.edge; else -> p.line }))
 }
 
 /** 像素风的「加载中」：4 帧奔跑小猫（D 控件表裁出） */

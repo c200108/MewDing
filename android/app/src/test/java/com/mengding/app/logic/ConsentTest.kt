@@ -45,7 +45,8 @@ class ConsentTest {
     @Test fun privacyHtmlIsSelfContainedAndComplete() {
         assertFalse("<script" in html.lowercase())
         assertFalse(Regex("""<link|src=["']http""", RegexOption.IGNORE_CASE).containsMatchIn(html))
-        assertTrue("（待填写）" in html)
+        assertFalse("（待填写）" in html)
+        assertTrue("山东拾野信息技术有限公司" in html && "mewding2026@gmail.com" in html)
         listOf("com.unity3d.player", "androidx.media3.exoplayer", "androidx.compose", "games-frame-pacing", "kotlinx.serialization",
             "api.open-meteo.com", "api.github.com", "cdn.jsdelivr.net", "ghfast.top", "gh-proxy.com", "ghproxy.net").forEach {
             assertTrue(it, it in html)

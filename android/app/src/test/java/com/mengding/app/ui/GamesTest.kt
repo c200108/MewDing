@@ -102,6 +102,32 @@ class GamesTest {
         assertEquals(2, g.levelNo)
     }
 
+    /** 萌点只在一局结束时结算：中途过关不结算，三条命用完才按本局金币总数结算一次 */
+    @Test fun pointsSettleOnlyWhenRunEnds() {
+        val g = adv(); g.enemies.clear()
+        val finishes = mutableListOf<Pair<Int, Boolean>>()
+        g.onFinish = { c, w -> finishes += c to w }
+        g.coinsTotal = 37
+        g.place(g.lv.flagX - 1.2f, 8f)
+        g.sim(1.5f) { right = true }
+        g.right = false
+        g.sim(25f)
+        assertEquals(2, g.levelNo)
+        assertTrue("过了第一关不该结算", finishes.isEmpty())
+
+        val g2 = adv()
+        g2.onFinish = { c, w -> finishes += c to w }
+        g2.coinsTotal = 37
+        repeat(3) {
+            g2.enemies.clear()
+            g2.place(69.1f, 13f)
+            g2.sim(5f)
+        }
+        assertEquals(AP.OVER, g2.phase)
+        assertEquals(listOf(37 to false), finishes)
+        assertEquals(18, com.mengding.app.logic.Economy.advPoints(37))
+    }
+
     /** 每一关都要能跳过去：一个只会"往右跑、前面有坑或障碍就跳"的机器人（无敌）要能走到终点 */
     @Test fun everyLevelIsPassable() {
         for (n in 1..3) {

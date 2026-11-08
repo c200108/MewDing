@@ -743,10 +743,7 @@ fun SpeechPage() {
 private fun SceneStylePicker(current: String) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var askRestart by remember { mutableStateOf(false) }
-    SectionTitle("3D 小屋风格")
-    Text("「微体素」是一格一格的小方块；「HD-2D」是立体低模 + 像素贴图，带窗口光束和远景小镇。" +
-        "首页只显示卧室，点「更多 ›」「宠物部屋」或卧室的门会展开客厅和院子。选好后重启应用生效。", fontSize = 12.sp, color = P.sub)
-    Gap(8.dp)
+    SectionTitle("特殊场景风格")
     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf("voxel" to "微体素", "hd2d" to "HD-2D").forEach { (k, label) ->
             Pill(label, current == k) {
@@ -760,7 +757,7 @@ private fun SceneStylePicker(current: String) {
         AlertDialog(
             onDismissRequest = { askRestart = false },
             title = { Text("重启后生效") },
-            text = { Text("3D 小屋要重新启动应用才能换风格。现在重启吗？你的数据都已保存。") },
+            text = { Text("换风格要重启一下应用，数据都已保存。现在重启吗？") },
             confirmButton = { TextButton({ askRestart = false; com.mengding.app.unity.UnityHost.restartApp(ctx) }) { Text("立即重启") } },
             dismissButton = { TextButton({ askRestart = false }) { Text("稍后") } },
         )
@@ -775,23 +772,18 @@ fun ThemePage() {
     val cfg by Store.config.collectAsState()
     PageScaffold("界面主题") {
         SectionTitle("首页动态背景")
-        Text("「3D 小屋」是新的立体像素卧室，宠物会在里面走动、吃喝、换装（测试中，只支持 64 位手机）。" +
-            "「自动」按时间换 2D 场景：清晨小屋、上午樱花河畔、下午雨后小街、傍晚秋日林荫道、夜晚河畔摩天轮、深夜少女房间；" +
-            "开了本地天气的话下雨会下雨、下雪换雪夜公园；12 月晚上是圣诞客厅。也可以固定一个喜欢的。", fontSize = 12.sp, color = P.sub)
-        Gap(8.dp)
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val on3d = com.mengding.app.unity.UnityHost.supported && cfg.settings.home3d
-            if (com.mengding.app.unity.UnityHost.supported) Pill("3D 小屋", on3d) { setS { it.copy(home3d = true) } }
+            if (com.mengding.app.unity.UnityHost.supported) Pill("特殊场景", on3d) { setS { it.copy(home3d = true) } }
             (listOf("auto" to "自动") + Scenes.ALL.toList()).forEach { (k, label) ->
                 Pill(label, !on3d && cfg.settings.homeScene == k) { setS { it.copy(homeScene = k, home3d = false) } }
             }
         }
-        if (com.mengding.app.unity.UnityHost.supported) SceneStylePicker(cfg.settings.sceneStyle)
+        // 选了「特殊场景」才出现它的风格选择
+        if (com.mengding.app.unity.UnityHost.supported && cfg.settings.home3d) SceneStylePicker(cfg.settings.sceneStyle)
         StylePicker(cfg.settings.uiStyle)
         SectionTitle("界面主题")
-        Text("主题会换掉主色、底部标签和首页功能按钮的图标、Logo 和启动页。宠物本身还是像素画风。", fontSize = 13.sp, color = P.sub)
-        Gap()
         Themes.all.forEach { t ->
             val sel = cfg.settings.uiTheme == t.key
             Column(
@@ -808,7 +800,6 @@ fun ThemePage() {
                             Box(Modifier.size(14.dp).clip(RoundedCornerShape(7.dp)).background(t.primary))
                             if (sel) { Spacer(Modifier.width(8.dp)); Text("使用中", fontSize = 12.sp, color = t.primaryDeep) }
                         }
-                        Text(t.desc, fontSize = 12.sp, color = P.sub)
                     }
                 }
                 Gap(10.dp)
@@ -883,9 +874,7 @@ fun MealTimesEditor() {
 private fun StylePicker(current: String) {
     val toast = toaster()
     var demo by remember { mutableStateOf<String?>(null) }
-    SectionTitle("界面风格（弹窗与控件）")
-    Text("所有弹窗、提示条、按钮、开关、输入框和日期时间选择都会换成这套画风，主色跟着下面的界面主题。", fontSize = 13.sp, color = P.sub)
-    Gap()
+    SectionTitle("界面风格")
     MdStyles.all.chunked(2).forEach { row ->
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             row.forEach { st ->
@@ -915,7 +904,6 @@ private fun StylePicker(current: String) {
                             Text(st.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = P.ink)
                             if (sel) { Spacer(Modifier.width(6.dp)); Text("使用中", fontSize = 11.sp, color = P.mintDeep) }
                         }
-                        Text(st.desc, fontSize = 11.sp, color = P.sub, lineHeight = 15.sp)
                     }
                 }
             }

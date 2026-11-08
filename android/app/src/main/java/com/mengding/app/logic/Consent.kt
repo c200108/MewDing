@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
  */
 object Consent {
     /** 协议有实质变化时 +1，老用户下次打开会重新弹窗 */
-    const val CURRENT_VERSION = 1
+    const val CURRENT_VERSION = 3
 
     private const val PREFS = "mengding_consent"
     private const val K_VERSION = "accepted_version"

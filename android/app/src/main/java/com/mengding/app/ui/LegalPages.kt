@@ -39,6 +39,13 @@ fun LicensesPage() {
             Lic("目哉像素体 MuzaiPixel", "DWNfonts", "SIL Open Font License 1.1", "github.com/DWNfonts/MuzaiPixel"),
             Lic("得意黑 Smiley Sans", "atelier-anchor", "SIL Open Font License 1.1", "github.com/atelier-anchor/smiley-sans"),
             Lic("霞鹜文楷 LXGW WenKai", "LXGW", "SIL Open Font License 1.1", "github.com/lxgw/LxgwWenKai"),
+            Lic("站酷小薇 LOGO 体 ZCOOL XiaoWei", "站酷", "SIL Open Font License 1.1", "github.com/google/fonts"),
+            Lic("站酷庆科黄油体 ZCOOL QingKe HuangYou", "站酷", "SIL Open Font License 1.1", "github.com/google/fonts"),
+            Lic("未来荧黑 Glow Sans", "welai", "SIL Open Font License 1.1", "github.com/welai/glow-sans"),
+            Lic("寒蝉团圆体 ChillReunion", "寒蝉 Warren2060", "SIL Open Font License 1.1", "github.com/Warren2060/ChillReunion"),
+            Lic("悠哉字体 Yozai", "LXGW", "SIL Open Font License 1.1", "github.com/lxgw/yozai-font"),
+            Lic("小赖字体 Xiaolai", "LXGW", "SIL Open Font License 1.1", "github.com/lxgw/kose-font"),
+            Lic("方舟像素字体 Ark Pixel Font", "TakWolf", "SIL Open Font License 1.1", "github.com/TakWolf/ark-pixel-font"),
         ))
         LicenseGroup("其他", listOf(
             Lic("首页场景引擎 Unity", "Unity Technologies", "Unity 软件条款（商业引擎，非开源）", "unity.com/legal"),
