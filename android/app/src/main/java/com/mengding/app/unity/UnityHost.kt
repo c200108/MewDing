@@ -156,9 +156,33 @@ object UnityHost {
         send(json)
     }
 
+    private class EnvArgs(val hour: Int, val minute: Int, val night: Boolean, val weather: String, val tempC: Int?, val rain: Boolean, val snow: Boolean)
+    private var lastEnvArgs: EnvArgs? = null
+
+    /**
+     * 场景环境（本地时间、天气）。开发版（BuildConfig.DEV_TOOLS）里开发菜单强制了时间 / 天气就按强制的发（DevScene），test 版没有这段；
+     * powerSave = 系统省电模式（Unity 里雨雪粒子减半）。
+     */
     fun env(hour: Int, minute: Int, night: Boolean, weather: String, tempC: Int?, rain: Boolean, snow: Boolean) {
+        lastEnvArgs = EnvArgs(hour, minute, night, weather, tempC, rain, snow)
+        sendEnv()
+    }
+
+    /** 开发菜单改了强制项：按最后一次真实环境重发 */
+    fun reapplyEnv() = sendEnv()
+
+    private fun sendEnv() {
+        val a = lastEnvArgs ?: return
+        val ctx = runCatching { com.mengding.app.MengDingApp.app }.getOrNull()
+        var hour = a.hour; var minute = a.minute; var night = a.night; var weather = a.weather; var rain = a.rain; var snow = a.snow
+        if (com.mengding.app.BuildConfig.DEV_TOOLS) {
+            if (ctx != null) DevScene.load(ctx)
+            val e = DevScene.apply(DevScene.Env(hour, minute, night, weather, rain, snow))
+            hour = e.hour; minute = e.minute; night = e.night; weather = e.weather; rain = e.rain; snow = e.snow
+        }
+        val powerSave = ctx?.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
         val json = op("env").put("hour", hour).put("minute", minute).put("night", night).put("weather", weather)
-            .put("tempC", tempC ?: 20).put("rain", rain).put("snow", snow)
+            .put("tempC", a.tempC ?: 20).put("rain", rain).put("snow", snow).put("powerSave", powerSave)
         val s = json.toString()
         if (s == lastEnv) return
         lastEnv = s

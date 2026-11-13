@@ -278,6 +278,23 @@ data class BubbleContent(val w: Float, val h: Float, val emoSize: Float, val emo
  * 场景里的宠物气泡：和宠物同一帧画，宠物走到哪跟到哪。
  * 文字排版按 (文字, 最大宽度) 缓存，只有换话或宠物远近变化时才重新排。
  */
+/**
+ * HD-2D 场景（小镇、宠物部屋）气泡的整体缩放：跟宠物在屏幕上的身高走（4.0.15）。
+ * 拉远看（宠物小）气泡跟着变小，拉近（宠物大）稍微变大；开平方让变化温和，上下限 0.66～1.3；
+ * 按 0.02 一档取整，双指缩放时不用每帧重排文字。文字、内边距、表情、尾巴、圆角全部按这个倍数（传给 SceneBubble.draw 的 d / sp 乘上它）。
+ */
+object BubbleScale {
+    /** 倍数 = 1 时宠物在屏幕上大约多高（dp） */
+    const val REF_DP = 26f
+    const val MIN = .66f
+    const val MAX = 1.3f
+    fun of(petHeightPx: Float, density: Float): Float {
+        if (petHeightPx <= 0f || density <= 0f) return 1f
+        val k = kotlin.math.sqrt(petHeightPx / (REF_DP * density))
+        return (kotlin.math.round(k * 50f) / 50f).coerceIn(MIN, MAX)
+    }
+}
+
 class SceneBubble {
     private val tp = TextPaint(Paint.ANTI_ALIAS_FLAG)
     private var key = ""

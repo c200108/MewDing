@@ -611,7 +611,16 @@ fun AboutPage() {
             Image(painterResource(LocalUiTheme.current.logo), null, Modifier.size(120.dp).clip(RoundedCornerShape(32.dp)))
         }
         Gap()
-        Text("萌叮 ${com.mengding.app.BuildConfig.VERSION_NAME}", Modifier.fillMaxWidth(), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = P.ink,
+        // 开发版（BuildConfig.DEV_TOOLS）才有：连点版本号 7 下打开开发菜单（强制首页小镇的时间 / 天气）；test 版版本号不能点
+        val ctx = LocalContext.current
+        val toast = toaster()
+        var taps by remember { mutableStateOf(0) }
+        if (com.mengding.app.BuildConfig.DEV_TOOLS) androidx.compose.runtime.LaunchedEffect(Unit) { com.mengding.app.unity.DevScene.load(ctx) }
+        val versionMod = if (!com.mengding.app.BuildConfig.DEV_TOOLS) Modifier.fillMaxWidth() else Modifier.fillMaxWidth().clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+                if (++taps >= 7 && !com.mengding.app.unity.DevScene.unlocked) { com.mengding.app.unity.DevScene.unlock(ctx); toast("已打开开发菜单") }
+            }
+        Text("萌叮 ${com.mengding.app.BuildConfig.VERSION_NAME}", versionMod, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = P.ink,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Gap()
         MCard {
@@ -622,6 +631,7 @@ fun AboutPage() {
         // 卡片之间留够空：奶油风有柔和投影、漫画 / 像素风有硬投影，挨着放会叠在一起
         Gap(14.dp)
         UpdateCard()
+        if (com.mengding.app.BuildConfig.DEV_TOOLS && com.mengding.app.unity.DevScene.unlocked) { Gap(14.dp); DevSceneCard() }
         Gap(14.dp)
         MCard {
             NavRow(Ic.Note, "用户服务协议", "使用规则、账号与注销、原创素材版权") { Nav.go("terms") }
@@ -630,6 +640,34 @@ fun AboutPage() {
             NavRow(Ic.Speech, "联系作者", "问题反馈、合作、素材使用许可") { Nav.go("contact") }
         }
         Spacer(Modifier.height(1.dp))
+    }
+}
+
+/** 开发菜单：强制首页 HD-2D 小镇的时间 / 天气（只改发给 Unity 的环境，不改数据） */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun DevSceneCard() {
+    val ctx = LocalContext.current
+    val dev = com.mengding.app.unity.DevScene
+    MCard {
+        Text("开发菜单（测试用）", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = P.ink)
+        Text("强制首页小镇的时间和天气，看不同光照；不改任何数据。", fontSize = 12.sp, color = P.sub)
+        Gap(8.dp)
+        Text("时间", fontSize = 13.sp, color = P.ink)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+            dev.HOURS.forEach { t ->
+                Pill(t?.let { "%d:%02d".format(it.first, it.second) } ?: "跟随", dev.time == t) { dev.setTime(ctx, t) }
+            }
+        }
+        Gap(8.dp)
+        Text("天气", fontSize = 13.sp, color = P.ink)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+            dev.WEATHERS.forEach { w -> Pill(w ?: "跟随", dev.weather == w) { dev.setWeather(ctx, w) } }
+        }
+        Gap(8.dp)
+        TextButton({ dev.lock(ctx) }) { Text("关闭开发菜单（恢复跟随）", fontSize = 13.sp) }
     }
 }
 

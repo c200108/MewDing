@@ -83,26 +83,29 @@ class DioramaPackTest {
         for ((n, b) in items) assertArrayEquals(n, b, pak.read(n))
     }
 
-    /** 真的资源包（unity_diorama 正交烘焙 + pack_full.py 打包，version 2）：目录完整、瓦片都是 WebP、scene.json 和瓦片数对得上 */
-    @Test fun realTownPackIsCompleteV2() {
+    /** 真的资源包（4.0.15：unity_diorama G-buffer 烘焙 + pack_light.py 打包，version 3）：目录完整、瓦片都是 WebP、scene.json 和瓦片数对得上、带灯位、不超过 8 MB */
+    @Test fun realTownPackIsCompleteV3() {
         val f = File("src/main/assets/hd2d/rikatown.pak")
         assertTrue("资源包不存在：${f.absolutePath}", f.exists())
-        assertTrue("资源包超过 10 MB：${f.length()}", f.length() <= 10L * 1024 * 1024)
+        assertTrue("资源包超过 8 MB：${f.length()}", f.length() <= 8L * 1024 * 1024)
         val pak = Pak.fromFile(f)
         val scene = String(pak.read("scene.json"), Charsets.UTF_8)   // 单测里没有 org.json 实现，用正则取数
         fun num(k: String) = Regex(""""$k"\s*:\s*(\d+)""").find(scene)!!.groupValues[1].toInt()
         fun pair(k: String) = Regex(""""$k"\s*:\s*\[\s*(\d+),\s*(\d+)""").find(scene)!!.groupValues.let { it[1].toInt() to it[2].toInt() }
-        assertEquals(2, num("version"))
+        assertEquals(3, num("version"))
         val tx = num("tilesX"); val ty = num("tilesY")
-        for (set in listOf("day", "dusk")) {
+        for (set in listOf("c", "n")) {
             for (y in 0 until ty) for (x in 0 until tx) {
                 val b = pak.read("$set/${x}_$y.webp")
                 assertEquals("RIFF", String(b, 0, 4, Charsets.US_ASCII)); assertEquals("WEBP", String(b, 8, 4, Charsets.US_ASCII))
             }
-            assertTrue(pak.has("${set}_q.webp") && pak.has("${set}_b.webp"))
         }
-        assertTrue(pak.has("glow_q.webp") && pak.has("walk_q.png"))
-        assertEquals(2 * tx * ty + 7, pak.size)
+        for (q in listOf("c_q.webp", "n_q.webp", "b_q.webp", "walk_q.png")) assertTrue("缺 $q", pak.has(q))
+        assertEquals(2 * tx * ty + 5, pak.size)
+        // 灯位：每盏灯都有 3D 位置、半径、颜色
+        val lamps = Regex(""""pos"\s*:\s*\[""").findAll(scene).count()
+        assertTrue("灯太少：$lamps", lamps >= 10)
+        assertEquals(lamps, Regex(""""range"\s*:""").findAll(scene).count())
         val walk = PngGray.decode(pak.read("walk_q.png"))
         val wq = pair("walkQuarter")
         assertEquals(wq.first, walk.width); assertEquals(wq.second, walk.height)

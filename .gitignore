@@ -53,3 +53,11 @@ tools/aseprite/
 unity/HD2DReport/*.log
 unity/HD2DReport/*.out
 unity/HD2DReport/shots/
+# HD-2D 立体小镇 demo / 烘焙工程（unity_diorama）：Unity 缓存和烘焙中间产物不进 git
+unity_diorama/Library/
+unity_diorama/Logs/
+unity_diorama/Temp/
+unity_diorama/UserSettings/
+unity_diorama/Bake/
+unity_diorama/Capture/
+unity/HD2DReport/diorama/

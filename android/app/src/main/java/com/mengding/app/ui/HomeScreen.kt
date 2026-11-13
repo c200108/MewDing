@@ -811,15 +811,17 @@ private fun Hd2dBubbles(bubble: String?, species: String, bubbleStyle: String, m
         if (bubble != null && ph != null) {
             val petH = ph.h * size.height
             val emo = parts.first?.takeIf { emoteSheet != null }
-            // 小镇里宠物画得比 2D 场景小：身宽至少按 64dp 算（气泡最宽约 2 个身宽），带表情时一行也能放下 6 个字左右
-            petTalk.draw(nc, parts.second, t, ph.x * size.width, ph.y * size.height, maxOf(petH * .85f, 64 * d), petH, ph.right, bounds, d, sp, skin,
+            // 气泡大小跟宠物在屏幕上的身高走（拉远变小、拉近稍大，显示期间缩放也实时跟着变）：d、sp 一起乘倍数，字号、内边距、表情、尾巴同比
+            val k = BubbleScale.of(petH, d)
+            petTalk.draw(nc, parts.second, t, ph.x * size.width, ph.y * size.height, maxOf(petH * .85f, 64 * d * k), petH, ph.right, bounds, d * k, sp * k, skin,
                 emote = if (emo != null) emoteSheet else null, emoteCol = emo?.col ?: 0)
         } else petTalk.draw(nc, null, t, 0f, 0f, 0f, 0f, false, bounds, d, d)
         val rh = UnityHost.resHead
         val rt = resText
         if (rt != null && rh != null) {
             val h = rh.h * size.height
-            resTalk.draw(nc, rt, t, rh.x * size.width, rh.y * size.height, maxOf(h * .85f, 64 * d), h, rh.right, bounds, d, sp, skin)
+            val k = BubbleScale.of(h, d)
+            resTalk.draw(nc, rt, t, rh.x * size.width, rh.y * size.height, maxOf(h * .85f, 64 * d * k), h, rh.right, bounds, d * k, sp * k, skin)
         } else resTalk.draw(nc, null, t, 0f, 0f, 0f, 0f, false, bounds, d, d)
     }
 }

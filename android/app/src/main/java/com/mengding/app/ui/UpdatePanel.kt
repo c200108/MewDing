@@ -112,7 +112,12 @@ fun UpdateCard() {
         MdDialog(
             onDismissRequest = { showNotes = null },
             title = { Text("${r.versionName} 更新说明") },
-            text = { Text(UpdateCheck.readableNotes(r.notes, 4000).ifBlank { "这一版没有写说明" }, Modifier.verticalScroll(rememberScrollState())) },
+            // 更新说明是 Markdown（标题、粗体、列表、代码、链接、表格），用自带的轻量渲染器画，不再显示原文符号
+            text = {
+                val md = UpdateCheck.readableNotes(r.notes, 20000)
+                if (md.isBlank()) Text("这一版没有写说明")
+                else MarkdownView(md, Modifier.verticalScroll(rememberScrollState()))
+            },
             confirmButton = { TextButton({ showNotes = null }) { Text("知道了") } },
         )
     }
@@ -126,7 +131,8 @@ private fun ReleaseInfo(r: UpdateRelease, onMore: () -> Unit) {
             Text(r.publishedAt.take(10), fontSize = 12.sp, color = P.sub)
         }
         Gap(4.dp)
-        val notes = UpdateCheck.readableNotes(r.notes, 240)
+        // 摘要：Markdown 转成纯文本（去掉 **、|、# 这些符号）再截断
+        val notes = com.mengding.app.logic.Markdown.toPlain(UpdateCheck.readableNotes(r.notes, 20000)).let { if (it.length <= 240) it else it.take(240).trimEnd() + "…" }
         if (notes.isNotBlank()) Text(notes, Modifier.heightIn(max = 140.dp), fontSize = 12.sp, color = P.sub, lineHeight = 17.sp)
         TextButton(onMore) { Text("看完整说明", fontSize = 13.sp) }
     }

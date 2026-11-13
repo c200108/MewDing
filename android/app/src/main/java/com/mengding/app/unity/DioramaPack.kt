@@ -25,7 +25,7 @@ import java.util.zip.ZipInputStream
 /**
  * HD-2D 场景资源包（立体小镇的烘焙瓦片；地图模块的世界地图）。不联网。
  *
- * 小镇（rikatown，4.0.14 起是整张地图的正交烘焙，包格式 version 2，见 unity_diorama/Tools~/pack_full.py）：
+ * 小镇（rikatown，4.0.14 起是整张地图的正交烘焙；4.0.15 起包格式 version 3 = G-buffer（底色 + 高度、法线 + 自发光、灯位），运行时打光，见 unity_diorama/Tools~/pack_light.py）：
  * 安装包里是 assets/hd2d/rikatown.pak（zip，只存不压；build.gradle 里 pak 设了 noCompress，所以在 APK 里也是原样）。
  * 不再整包解压成原始像素（4.0.13 要占 59 MB），而是用 openFd 直接从 APK 里按偏移读条目：
  * Unity 要哪块瓦片，就在后台线程把那块 WebP 解成 RGBA 字节，Unity 取走后直接上传显存。
@@ -86,7 +86,7 @@ object DioramaPack {
             Pak.fromFile(f)
         }
         val scene = JSONObject(String(pak.read("scene.json"), Charsets.UTF_8))
-        require(scene.optInt("version") == 2) { "rikatown.pak version ${scene.optInt("version")}" }
+        require(scene.optInt("version") == 3) { "rikatown.pak version ${scene.optInt("version")}" }
         town = pak
         lastOpenMs = SystemClock.elapsedRealtime() - t0
         Log.i(TAG, "opened $TOWN: ${pak.size} entries in $lastOpenMs ms")
