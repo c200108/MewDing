@@ -12,20 +12,26 @@ import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.channels.FileChannel
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.zip.CRC32
 import java.util.zip.ZipInputStream
 
 /**
- * HD-2D 场景资源包（立体小镇的烘焙图、深度图、可走遮罩；地图模块的世界地图）。
+ * HD-2D 场景资源包（立体小镇的烘焙瓦片；地图模块的世界地图）。不联网。
  *
- * 安装包里是 assets/hd2d/<id>.pak（zip，只存不压：WebP 有损颜色 + 16 位 PNG 深度 + 8 位 PNG 遮罩 + json），
- * 第一次要用时在后台解到私有目录 files/hd2d/<id>/，像字体一样缓存下来，以后直接读；不联网。
- * 解出来的是 Unity 能直接上传显存的原始像素（Unity 不认 WebP）：
- *   *.webp → <名字>.rgb（RGB24，上行在前）   *.png（16 位灰度）→ <名字>.rg（每像素高字节、低字节）
- *   *.png（8 位灰度）→ <名字>.r8              其他文件原样复制
- * 最后写 ready.json（宽高、包的指纹、解压耗时）；Unity 看到 ready.json 才开始读。
- * 包换了（App 升级带了新烘焙图）指纹对不上就重新解。
+ * 小镇（rikatown，4.0.14 起是整张地图的正交烘焙，包格式 version 2，见 unity_diorama/Tools~/pack_full.py）：
+ * 安装包里是 assets/hd2d/rikatown.pak（zip，只存不压；build.gradle 里 pak 设了 noCompress，所以在 APK 里也是原样）。
+ * 不再整包解压成原始像素（4.0.13 要占 59 MB），而是用 openFd 直接从 APK 里按偏移读条目：
+ * Unity 要哪块瓦片，就在后台线程把那块 WebP 解成 RGBA 字节，Unity 取走后直接上传显存。
+ * 缓存占用 0（个别机型 openFd 不行时退回复制一份 pak 到私有目录，约 10 MB）。
+ *
+ * 世界地图（worldmap，version 1）：仍按老办法第一次用时解到 files/hd2d/worldmap/（几十 KB）。
  */
 object DioramaPack {
     private const val TAG = "DioramaPack"
@@ -34,8 +40,8 @@ object DioramaPack {
     /** 首页小镇（rikatown）这个包的状态：Failed 时首页退回 2D 动态场景 */
     var state by mutableStateOf(State.Idle)
         private set
-    /** 最近一次真正解压用了多少毫秒（已缓存时是 0） */
-    var lastUnpackMs = 0L
+    /** 打开小镇资源包（读目录 + 校验 scene.json）用了多少毫秒 */
+    var lastOpenMs = 0L
         private set
 
     const val TOWN = "rikatown"
@@ -43,35 +49,97 @@ object DioramaPack {
 
     fun dir(ctx: Context, id: String) = File(ctx.filesDir, "hd2d/$id")
 
-    /** 首页要用 Unity 小镇时调用：后台解压，不阻塞界面 */
+    @Volatile private var town: Pak? = null
+    private val pool = Executors.newFixedThreadPool(2) { r -> Thread(r, "hd2d-tile").apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 } }
+    private val pending = ConcurrentHashMap<String, Boolean>()
+    private val done = ConcurrentHashMap<String, ByteArray>()
+
+    /** 首页要用 Unity 小镇时调用：后台打开资源包，不阻塞界面 */
     fun prepareAsync(ctx: Context) {
         if (state == State.Working || state == State.Ready) return
         state = State.Working
         val app = ctx.applicationContext
         Thread({
-            val ok = runCatching { ensure(app, TOWN) }.onFailure { Log.e(TAG, "unpack $TOWN failed", it) }.getOrDefault(false)
+            val ok = runCatching { openTown(app) != null }.onFailure { Log.e(TAG, "open $TOWN failed", it) }.getOrDefault(false)
             state = if (ok) State.Ready else State.Failed
-        }, "hd2d-unpack").start()
+        }, "hd2d-open").start()
     }
 
-    /** Unity 报告读不了烘焙资源：删掉缓存，首页换回 2D（下次启动会重新解） */
+    /** Unity 报告读不了烘焙资源：首页换回 2D（下次启动再试） */
     fun markBroken(ctx: Context) {
-        runCatching { dir(ctx, TOWN).deleteRecursively() }
+        runCatching { File(ctx.filesDir, "hd2d/$TOWN.pak").delete() }
+        town = null
         state = State.Failed
     }
 
-    /** 确保 <id> 已经解好（同步，耗时操作，别在主线程调） */
+    @Synchronized
+    fun openTown(ctx: Context): Pak? {
+        town?.let { return it }
+        val t0 = SystemClock.elapsedRealtime()
+        // 4.0.13 解出来的原始像素缓存（约 59 MB）用不上了，删掉
+        runCatching { dir(ctx, TOWN).takeIf { it.exists() }?.deleteRecursively() }
+        val pak = runCatching { Pak.fromAsset(ctx, "hd2d/$TOWN.pak") }.getOrElse {
+            Log.w(TAG, "openFd failed, copying pak", it)
+            val bytes = ctx.assets.open("hd2d/$TOWN.pak").use { s -> s.readBytes() }
+            val f = File(ctx.filesDir, "hd2d/$TOWN.pak")
+            if (!f.exists() || f.length() != bytes.size.toLong()) { f.parentFile?.mkdirs(); f.writeBytes(bytes) }
+            Pak.fromFile(f)
+        }
+        val scene = JSONObject(String(pak.read("scene.json"), Charsets.UTF_8))
+        require(scene.optInt("version") == 2) { "rikatown.pak version ${scene.optInt("version")}" }
+        town = pak
+        lastOpenMs = SystemClock.elapsedRealtime() - t0
+        Log.i(TAG, "opened $TOWN: ${pak.size} entries in $lastOpenMs ms")
+        return pak
+    }
+
+    /** scene.json 原文（Unity 读相机参数、瓦片表）；打不开返回 "" */
+    fun townScene(ctx: Context): String = runCatching { String(openTown(ctx)!!.read("scene.json"), Charsets.UTF_8) }.getOrDefault("")
+
+    /** 让后台线程解码一张图（瓦片或 1/4 分辨率图）；已在解或已解好就忽略 */
+    fun request(ctx: Context, name: String) {
+        if (done.containsKey(name) || pending.putIfAbsent(name, true) != null) return
+        pool.execute {
+            try {
+                val pak = openTown(ctx) ?: return@execute
+                done[name] = decodeRgba(pak.read(name))
+            } catch (e: Throwable) {
+                Log.e(TAG, "decode $name failed", e)
+            } finally { pending.remove(name) }
+        }
+    }
+
+    /** 取走解好的图：RGBA 字节（上行在前）；没好返回 null */
+    fun take(name: String): ByteArray? = done.remove(name)
+
+    /** 不要了的请求（镜头已经移走）：解好的直接丢掉 */
+    fun drop(name: String) { done.remove(name) }
+
+    /** 同步解一张（Unity 起来时要的 1/4 分辨率总览、遮罩；只在 Unity 线程调，图都很小） */
+    fun decodeNow(ctx: Context, name: String): ByteArray? = runCatching { decodeRgba(openTown(ctx)!!.read(name)) }
+        .onFailure { Log.e(TAG, "decode $name failed", it) }.getOrNull()
+
+    /** WebP / PNG → RGBA 字节，上行在前。不预乘：瓦片的 Alpha 里存的是高度，颜色不能被它乘掉 */
+    private fun decodeRgba(bytes: ByteArray): ByteArray {
+        val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888; inPremultiplied = false; inScaled = false }
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: error("decode failed")
+        try {
+            val out = ByteArray(bmp.width * bmp.height * 4)
+            val src = if (bmp.config == Bitmap.Config.ARGB_8888) bmp else bmp.copy(Bitmap.Config.ARGB_8888, false)
+            src.copyPixelsToBuffer(ByteBuffer.wrap(out))   // ARGB_8888 在内存里就是 R、G、B、A 字节顺序
+            if (src !== bmp) src.recycle()
+            return out
+        } finally { bmp.recycle() }
+    }
+
+    /** 确保 <id>（世界地图）已经解好（同步，耗时操作，别在主线程调） */
     @Synchronized
     fun ensure(ctx: Context, id: String): Boolean {
         val pak = ctx.assets.open("hd2d/$id.pak").use { it.readBytes() }
         val stamp = "${pak.size}-${crc(pak)}"
         val out = dir(ctx, id)
         val ready = File(out, "ready.json")
-        if (ready.exists() && runCatching { JSONObject(ready.readText()).optString("stamp") }.getOrNull() == stamp) {
-            lastUnpackMs = 0
-            return true
-        }
-        // 先把旧的 ready.json 删掉：Unity 不会在重新解压的过程中读到旧缓存
+        if (ready.exists() && runCatching { JSONObject(ready.readText()).optString("stamp") }.getOrNull() == stamp) return true
         ready.delete()
         val t0 = SystemClock.elapsedRealtime()
         val tmp = File(out.parentFile, "$id.tmp")
@@ -100,22 +168,16 @@ object DioramaPack {
             }
         }
         val ms = SystemClock.elapsedRealtime() - t0
-        val main = dims.optJSONObject("day")
-        val glow = dims.optJSONObject("glow")
-        val info = JSONObject().put("stamp", stamp).put("files", dims).put("unpackMs", ms)
-        if (main != null) info.put("width", main.getInt("w")).put("height", main.getInt("h"))
-            .put("glowWidth", glow?.getInt("w") ?: (main.getInt("w") / 2)).put("glowHeight", glow?.getInt("h") ?: (main.getInt("h") / 2))
-        File(tmp, "ready.json").writeText(info.toString())
+        File(tmp, "ready.json").writeText(JSONObject().put("stamp", stamp).put("files", dims).put("unpackMs", ms).toString())
         out.deleteRecursively()
         if (!tmp.renameTo(out)) { tmp.copyRecursively(out, overwrite = true); tmp.deleteRecursively() }
-        lastUnpackMs = ms
         Log.i(TAG, "unpacked $id (${pak.size / 1024} KB) in $ms ms")
         return true
     }
 
     private fun crc(b: ByteArray) = CRC32().also { it.update(b) }.value
 
-    /** WebP → RGB24 原始像素（上行在前），按 64 行一块转，不一次性占两份大数组 */
+    /** WebP → RGB24 原始像素（上行在前），按 64 行一块转 */
     private fun webpToRgb(bytes: ByteArray, dst: File): Pair<Int, Int> {
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
             ?: error("webp decode failed: ${dst.name}")
@@ -150,8 +212,78 @@ object DioramaPack {
 }
 
 /**
+ * 只存不压的 zip，按偏移随机读条目（FileChannel 定位读，线程安全）。
+ * 不用 java.util.zip.ZipFile：它要一个独立文件，而 APK 里的资产只给 (fd, 起始偏移, 长度)。纯 JVM，单测直接跑。
+ */
+class Pak private constructor(private val ch: FileChannel, private val base: Long, private val length: Long, @Suppress("unused") private val keep: Any?) {
+    private class Entry(val offset: Long, val size: Int)
+    private val entries = HashMap<String, Entry>()
+    val size get() = entries.size
+    val names: Set<String> get() = entries.keys
+
+    init { index() }
+
+    private fun readAt(pos: Long, n: Int): ByteBuffer {
+        val b = ByteBuffer.allocate(n).order(ByteOrder.LITTLE_ENDIAN)
+        var p = pos
+        while (b.hasRemaining()) { val k = ch.read(b, base + p); require(k > 0) { "short read at $p" }; p += k }
+        b.flip(); return b
+    }
+
+    private fun index() {
+        // 末尾的「中央目录结束记录」：22 字节 + 注释（打包脚本不写注释，保险起见往前找 64 KB）
+        val tailLen = minOf(length, 22L + 65535).toInt()
+        val tail = readAt(length - tailLen, tailLen)
+        var eocd = -1
+        for (i in tailLen - 22 downTo 0) if (tail.getInt(i) == 0x06054b50) { eocd = i; break }
+        require(eocd >= 0) { "not a zip" }
+        val count = tail.getShort(eocd + 10).toInt() and 0xFFFF
+        val cdSize = tail.getInt(eocd + 12).toLong() and 0xFFFFFFFFL
+        val cdOff = tail.getInt(eocd + 16).toLong() and 0xFFFFFFFFL
+        val cd = readAt(cdOff, cdSize.toInt())
+        var p = 0
+        repeat(count) {
+            require(cd.getInt(p) == 0x02014b50) { "bad central dir" }
+            val method = cd.getShort(p + 10).toInt()
+            val csize = cd.getInt(p + 20)
+            val nlen = cd.getShort(p + 28).toInt() and 0xFFFF
+            val xlen = cd.getShort(p + 30).toInt() and 0xFFFF
+            val clen = cd.getShort(p + 32).toInt() and 0xFFFF
+            val local = cd.getInt(p + 42).toLong() and 0xFFFFFFFFL
+            val nameBytes = ByteArray(nlen).also { for (i in 0 until nlen) it[i] = cd.get(p + 46 + i) }
+            require(method == 0) { "entry ${String(nameBytes)} is compressed" }
+            val lh = readAt(local, 30)
+            require(lh.getInt(0) == 0x04034b50) { "bad local header" }
+            val dataOff = local + 30 + (lh.getShort(26).toInt() and 0xFFFF) + (lh.getShort(28).toInt() and 0xFFFF)
+            entries[String(nameBytes, Charsets.UTF_8)] = Entry(dataOff, csize)
+            p += 46 + nlen + xlen + clen
+        }
+    }
+
+    fun has(name: String) = entries.containsKey(name)
+
+    fun read(name: String): ByteArray {
+        val e = entries[name] ?: error("no entry $name")
+        val b = readAt(e.offset, e.size)
+        return ByteArray(e.size).also { b.get(it) }
+    }
+
+    companion object {
+        fun fromAsset(ctx: Context, path: String): Pak {
+            val afd = ctx.assets.openFd(path)
+            val fis = FileInputStream(afd.fileDescriptor)
+            return Pak(fis.channel, afd.startOffset, afd.length, listOf(afd, fis))
+        }
+        fun fromFile(f: File): Pak {
+            val fis = FileInputStream(f)
+            return Pak(fis.channel, 0, f.length(), fis)
+        }
+    }
+}
+
+/**
  * 只认灰度（颜色类型 0）、不隔行的 PNG，8 位或 16 位。返回的 samples 是原始样本字节（16 位时大端：高字节在前），上行在前。
- * 资源包里的深度图和遮罩都是 Python 写的这种 PNG；纯 JVM 代码，单测直接跑。
+ * 纯 JVM 代码，单测直接跑。
  */
 object PngGray {
     class Image(val width: Int, val height: Int, val bitDepth: Int, val samples: ByteArray)

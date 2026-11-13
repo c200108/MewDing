@@ -496,6 +496,10 @@ fun PetStage(
             }
             // 世界地图入口（小喇叭右边）：萌叮小镇是地图上的一个地标，点它回来
             var showMap by remember { mutableStateOf(false) }
+            // 宠物走进小镇边上的光圈（去其他大场景的入口）：打开世界地图，其他地方在地图上是「敬请期待」
+            val mapReq = UnityHost.worldMapRequests
+            var seenReq by remember { mutableStateOf(mapReq) }
+            LaunchedEffect(mapReq) { if (mapReq != seenReq) { seenReq = mapReq; showMap = true } }
             Text("地图", Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 8.dp).clip(RoundedCornerShape(17.dp))
                 .background(Color(0xCCFFFFFF)).clickable { showMap = true }.padding(horizontal = 12.dp, vertical = 7.dp),
                 fontSize = 13.sp, fontWeight = FontWeight.Bold, color = P.mintDeep)

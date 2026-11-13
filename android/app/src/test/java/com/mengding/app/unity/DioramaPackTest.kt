@@ -67,23 +67,45 @@ class DioramaPackTest {
         assertArrayEquals(byteArrayOf(0x10, 0x20, 0x30, 0xF0.toByte(), 0xE0.toByte(), 0xD0.toByte()), out)
     }
 
-    /** 真的资源包（unity_diorama 烘焙 + pack_diorama.py 打包）：校验值由 Python（Pillow + numpy）算出 */
-    @Test fun realTownPackDecodesLikePython() {
-        val pak = File("src/main/assets/hd2d/rikatown.pak")
-        assertTrue("资源包不存在：${pak.absolutePath}", pak.exists())
-        ZipFile(pak).use { z ->
-            val names = z.entries().toList().map { it.name }.toSet()
-            assertTrue(names.containsAll(listOf("day.webp", "dusk.webp", "glow.webp", "depth.png", "walk.png", "scene.json")))
-            val depth = PngGray.decode(z.getInputStream(z.getEntry("depth.png")).readBytes())
-            assertEquals(1890, depth.width); assertEquals(3360, depth.height); assertEquals(16, depth.bitDepth)
-            var sum = 0L
-            for (i in 0 until depth.width * depth.height) sum += ((depth.samples[i * 2].toInt() and 0xFF) shl 8) or (depth.samples[i * 2 + 1].toInt() and 0xFF)
-            fun at(x: Int, y: Int) = ((depth.samples[(y * 1890 + x) * 2].toInt() and 0xFF) shl 8) or (depth.samples[(y * 1890 + x) * 2 + 1].toInt() and 0xFF)
-            assertEquals(65320, at(0, 0)); assertEquals(27770, at(945, 1680))
-            assertEquals(169875729977L, sum)
-            val walk = PngGray.decode(z.getInputStream(z.getEntry("walk.png")).readBytes())
-            assertEquals(8, walk.bitDepth)
-            assertEquals(1763849, walk.samples.count { it.toInt() and 0xFF == 255 })
+    /** 只存不压的 zip：按中央目录找到每个条目的数据偏移，读出来和写进去的一模一样（含中文名、空文件） */
+    @Test fun pakReadsStoredZipEntries() {
+        val f = File.createTempFile("pak", ".zip"); f.deleteOnExit()
+        val items = linkedMapOf("scene.json" to "{\"version\":2}".toByteArray(), "day/0_0.webp" to ByteArray(5000) { (it * 31).toByte() },
+            "空.bin" to ByteArray(0), "dusk/6_1.webp" to ByteArray(77) { it.toByte() })
+        java.util.zip.ZipOutputStream(f.outputStream()).use { z ->
+            for ((n, b) in items) {
+                val e = java.util.zip.ZipEntry(n).apply { method = java.util.zip.ZipEntry.STORED; size = b.size.toLong(); compressedSize = b.size.toLong(); crc = CRC32().also { it.update(b) }.value }
+                z.putNextEntry(e); z.write(b); z.closeEntry()
+            }
         }
+        val pak = Pak.fromFile(f)
+        assertEquals(items.keys, pak.names)
+        for ((n, b) in items) assertArrayEquals(n, b, pak.read(n))
+    }
+
+    /** 真的资源包（unity_diorama 正交烘焙 + pack_full.py 打包，version 2）：目录完整、瓦片都是 WebP、scene.json 和瓦片数对得上 */
+    @Test fun realTownPackIsCompleteV2() {
+        val f = File("src/main/assets/hd2d/rikatown.pak")
+        assertTrue("资源包不存在：${f.absolutePath}", f.exists())
+        assertTrue("资源包超过 10 MB：${f.length()}", f.length() <= 10L * 1024 * 1024)
+        val pak = Pak.fromFile(f)
+        val scene = String(pak.read("scene.json"), Charsets.UTF_8)   // 单测里没有 org.json 实现，用正则取数
+        fun num(k: String) = Regex(""""$k"\s*:\s*(\d+)""").find(scene)!!.groupValues[1].toInt()
+        fun pair(k: String) = Regex(""""$k"\s*:\s*\[\s*(\d+),\s*(\d+)""").find(scene)!!.groupValues.let { it[1].toInt() to it[2].toInt() }
+        assertEquals(2, num("version"))
+        val tx = num("tilesX"); val ty = num("tilesY")
+        for (set in listOf("day", "dusk")) {
+            for (y in 0 until ty) for (x in 0 until tx) {
+                val b = pak.read("$set/${x}_$y.webp")
+                assertEquals("RIFF", String(b, 0, 4, Charsets.US_ASCII)); assertEquals("WEBP", String(b, 8, 4, Charsets.US_ASCII))
+            }
+            assertTrue(pak.has("${set}_q.webp") && pak.has("${set}_b.webp"))
+        }
+        assertTrue(pak.has("glow_q.webp") && pak.has("walk_q.png"))
+        assertEquals(2 * tx * ty + 7, pak.size)
+        val walk = PngGray.decode(pak.read("walk_q.png"))
+        val wq = pair("walkQuarter")
+        assertEquals(wq.first, walk.width); assertEquals(wq.second, walk.height)
+        assertTrue("可走遮罩是空的", walk.samples.count { it.toInt() and 0xFF == 255 } > 1000)
     }
 }

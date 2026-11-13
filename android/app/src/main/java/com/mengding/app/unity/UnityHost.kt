@@ -51,6 +51,8 @@ object UnityHost {
 
     /** 现在在宠物部屋场景里（顶上的标题、相框铭牌跟着变） */
     var inPetRoom by mutableStateOf(false)
+    /** 小镇边上的光圈被走进去的次数（每次 +1，首页看到变化就打开世界地图） */
+    var worldMapRequests by mutableStateOf(0)
         private set
 
     /** 全场景展开中（首页把 3D 视口铺满全屏） */
@@ -218,6 +220,8 @@ object UnityHost {
             "request_expand" -> expand(evt.optString("source", "door"))
             // HD-2D 小镇 ↔ 宠物部屋（走进光圈换场景）：相框铭牌和全屋标题跟着变
             "scene_change" -> inPetRoom = evt.optString("prop") == "PetRoom"
+            // 小镇边上的光圈（去其他大场景）：打开世界地图，其他大场景在地图上显示「敬请期待」
+            "open_worldmap" -> worldMapRequests++
             // Unity 读不了立体小镇的烘焙资源：清掉缓存，首页换回 2D 动态场景
             "diorama_failed" -> DioramaPack.markBroken(com.mengding.app.MengDingApp.app)
         }
@@ -238,7 +242,14 @@ object UnityBridge {
     @JvmStatic fun sceneStyle(): String = UnityHost.launchStyle
     /** HD-2D 资源包解压到的目录（files/hd2d），见 DioramaPack */
     @JvmStatic fun hd2dDir(): String = java.io.File(com.mengding.app.MengDingApp.app.filesDir, "hd2d").absolutePath
-    /** 首页小镇资源包解压好了没有（App 升级换了包时，旧缓存在重新解压期间不能读） */
+    /** 首页小镇资源包打开好了没有 */
     @JvmStatic fun hd2dReady(): Boolean = DioramaPack.state == DioramaPack.State.Ready
+    // ---- 4.0.14 小镇瓦片（见 DioramaPack）：Unity 要哪块就请求，后台线程解成 RGBA 字节，Unity 取走上传显存 ----
+    /** scene.json 原文；打不开返回 "" */
+    @JvmStatic fun hd2dScene(): String = DioramaPack.townScene(com.mengding.app.MengDingApp.app)
+    @JvmStatic fun hd2dRequest(name: String) = DioramaPack.request(com.mengding.app.MengDingApp.app, name)
+    @JvmStatic fun hd2dTake(name: String): ByteArray? = DioramaPack.take(name)
+    @JvmStatic fun hd2dDecodeNow(name: String): ByteArray? = DioramaPack.decodeNow(com.mengding.app.MengDingApp.app, name)
+    @JvmStatic fun hd2dDrop(name: String) = DioramaPack.drop(name)
     @JvmStatic fun onUnityMessage(json: String) { UnityHost.onMessage(json) }
 }
