@@ -139,7 +139,10 @@ fun HomeScreen() {
 
     // 首页 3D 小屋：Kotlin 管数据，Unity 管场景（JSON 协议见 unity/UnityHost.kt）。
     // 首页 UI ↔ 房间家具：体力 ↔ 床，喂食 / 饮水 / 喝水打卡 ↔ 食盆水碗，换装 ↔ 衣柜，时间天气 ↔ 窗外和院子的天空，便签 / 解压游戏 ↔ 书桌电脑。
-    val use3d = UnityHost.supported && cfg.settings.home3d
+    // 立体小镇的烘焙资源包：第一次进首页时后台解压（几百毫秒到一两秒，Unity 那边等着）；解压失败就退回 2D 动态场景
+    val wantUnity = UnityHost.supported && cfg.settings.home3d
+    LaunchedEffect(wantUnity) { if (wantUnity) com.mengding.app.unity.DioramaPack.prepareAsync(ctx) }
+    val use3d = wantUnity && com.mengding.app.unity.DioramaPack.state != com.mengding.app.unity.DioramaPack.State.Failed
     var deskChooser by remember { mutableStateOf(false) }
     // 3D 小屋里换装要先去衣柜：小蜜走到衣柜前、打开衣柜（Unity 回 wardrobe_opened）后才弹衣柜面板，穿上 / 脱下都在衣柜前完成；
     // 面板关上时衣柜也关上，小蜜出来转一圈。喂食 / 饮水打开面板时它先走到食盆边等着。
@@ -161,7 +164,7 @@ fun HomeScreen() {
         lastPanel = inventory
     }
     // HD-2D 小镇的背景音乐（小喇叭开关在相框左下角）
-    val hd2dHome = use3d && UnityHost.launchStyle == "hd2d"
+    val hd2dHome = use3d   // 特殊场景只剩 HD-2D 小镇
     if (hd2dHome) HomeMusic(cfg.settings.homeMusic)
     if (use3d) {
         val ctxB = androidx.compose.ui.platform.LocalContext.current
@@ -171,14 +174,18 @@ fun HomeScreen() {
     val homePet = cfg.pets.firstOrNull()
     if (use3d && pet == null && homePet != null) {
         val owned = remember(cfg.pets) { cfg.pets.map { it.species } }
-        LaunchedEffect(homePet.species, owned, UnityHost.ready) { UnityHost.setPet(homePet.species, "idle", homePet.worn, owned, outing = false) }
+        // HD-2D 场景（小镇、宠物部屋）暂时不显示宠物服装：发空列表；服装数据、商店和其他场景不受影响
+        val homeWorn = if (hd2dHome) emptyList() else homePet.worn
+        LaunchedEffect(homePet.species, homeWorn, owned, UnityHost.ready) { UnityHost.setPet(homePet.species, "idle", homeWorn, owned, outing = false) }
     }
     if (use3d && pet != null) {
         val mood = remember(cfg, priv, now / 2000) { PetFx.actionFor(pet, cfg, isOuting = false) }
         // 一并告诉小镇：已拥有哪些宠物、这只是不是带出门的（只有带出门的能在场景里操作，其余已拥有的在宠物部屋里待着）
         val owned = remember(cfg.pets) { cfg.pets.map { it.species } }
         val outing = cfg.outingId == pet.id
-        LaunchedEffect(pet.species, mood, pet.worn, owned, outing, UnityHost.ready) { UnityHost.setPet(pet.species, mood, pet.worn, owned, outing) }
+        // HD-2D 场景暂时不显示宠物服装（同上）：换装面板照常可用，只是不把衣服发给 HD-2D 场景
+        val sceneWorn = if (hd2dHome) emptyList() else pet.worn
+        LaunchedEffect(pet.species, mood, sceneWorn, owned, outing, UnityHost.ready) { UnityHost.setPet(pet.species, mood, sceneWorn, owned, outing) }
         val coins = cfg.economy.points
         LaunchedEffect(pet.stamina.toInt(), pet.satiety.toInt(), pet.hydration.toInt(), coins, UnityHost.ready) {
             UnityHost.stats(pet.stamina.toInt(), pet.satiety.toInt(), pet.hydration.toInt(), coins)
@@ -472,13 +479,13 @@ fun PetStage(
         // 场景直接铺满相框内区，不再垫深色底和内边距（0.3.11 那圈深色就是"黑条"）；展开全屋时相框原地铺满首页
         if (use3d) UnityStage(Modifier.fillMaxSize())
         // HD-2D 小镇：气泡用和 2D 场景同一套画法画在 Unity 画面上面，跟着 Unity 报上来的头顶位置走
-        if (use3d && UnityHost.launchStyle == "hd2d") Hd2dBubbles(bubble, species, cfg.settings.bubbleStyle, Modifier.matchParentSize())
+        if (use3d) Hd2dBubbles(bubble, species, cfg.settings.bubbleStyle, Modifier.matchParentSize())
         // 2D 场景没有宠物出门时，画家里那只在睡觉（只展示）
         else LiveScene(key, species, action, outfits, rain = Weather.rainy(code), modifier = Modifier.fillMaxSize(), bubble = bubble,
             bubbleStyle = cfg.settings.bubbleStyle, tap = sceneTap)
         FrameMask(Modifier.matchParentSize())
         // HD-2D 小镇：左下角的小喇叭，开关首页背景音乐
-        if (use3d && UnityHost.launchStyle == "hd2d") {
+        if (use3d) {
             val musicOn = cfg.settings.homeMusic
             Box(Modifier.align(Alignment.BottomStart).padding(8.dp).size(34.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xCCFFFFFF))
@@ -487,6 +494,12 @@ fun PetStage(
                 Icon(if (musicOn) Ic.Sound else Ic.Mute, if (musicOn) "关掉背景音乐" else "打开背景音乐", Modifier.size(20.dp),
                     tint = if (musicOn) P.mintDeep else P.sub)
             }
+            // 世界地图入口（小喇叭右边）：萌叮小镇是地图上的一个地标，点它回来
+            var showMap by remember { mutableStateOf(false) }
+            Text("地图", Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 8.dp).clip(RoundedCornerShape(17.dp))
+                .background(Color(0xCCFFFFFF)).clickable { showMap = true }.padding(horizontal = 12.dp, vertical = 7.dp),
+                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = P.mintDeep)
+            if (showMap) WorldMapDialog(onDismiss = { showMap = false })
         }
         if (expanded) ExpandedChrome(name, onMenu = onLong, onInventory = onInventory)
         else {
@@ -510,7 +523,7 @@ fun PetStage(
         }
         // 相框铭牌把场景和首页其它卡片分开，也让当前场景始终可识别（全屋横屏时顶上已经有「某某的家」，不再挂）。
         if (!expanded) Text(
-            if (use3d) "紫色卧室" else Scenes.ALL[key] ?: key,
+            if (use3d) (if (UnityHost.inPetRoom) "宠物部屋" else "萌叮小镇") else Scenes.ALL[key] ?: key,
             Modifier.align(Alignment.BottomCenter).padding(bottom = 3.dp)
                 .clip(RoundedCornerShape(8.dp)).background(Color(0xDDFFF3D8))
                 .padding(horizontal = 12.dp, vertical = 2.dp),
@@ -690,7 +703,7 @@ fun UnityStage(modifier: Modifier) {
             modifier = Modifier.fillMaxSize(),
             onRelease = { UnityHost.detach(it) },
         )
-        if (cover) Box(Modifier.fillMaxSize().background(if (UnityHost.launchStyle == "hd2d") Color(0xFFBFDDF2) else Color(0xFFF6E3EE)))
+        if (cover) Box(Modifier.fillMaxSize().background(Color(0xFFBFDDF2)))
     }
 }
 

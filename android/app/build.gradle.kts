@@ -15,7 +15,7 @@ val keystoreProps = Properties().apply {
 
 android {
     // 音效、背景音乐要用 openFd 直接读，不能压缩
-    androidResources { noCompress += listOf("wav", "ogg", "mp3") }
+    androidResources { noCompress += listOf("wav", "ogg", "mp3", "pak") }   // pak：HD-2D 资源包，里面已经是 WebP / PNG，不再压
     namespace = "com.mengding.app"
     compileSdk = 35
 
@@ -23,8 +23,8 @@ android {
         applicationId = "com.mengding.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 37
-        versionName = "4.0.10-test"
+        versionCode = 40
+        versionName = "4.0.13-test"
         // 首页 3D 小屋的 Unity 运行库只带 64 位 ARM（真机）；调试包另外带 x86_64 方便电脑模拟器
         ndk { abiFilters += listOf("arm64-v8a") }
     }

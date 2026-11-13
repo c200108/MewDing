@@ -36,7 +36,12 @@ object Store {
         dir = ctx.filesDir
         runCatching {
             val f = File(dir, "config.json")
-            if (f.exists()) _config.value = json.decodeFromString(ConfigState.serializer(), f.readText())
+            if (f.exists()) {
+                val loaded = json.decodeFromString(ConfigState.serializer(), f.readText())
+                val migrated = migrateConfig(loaded)
+                _config.value = migrated
+                if (migrated != loaded) write("config.json", json.encodeToString(ConfigState.serializer(), migrated).toByteArray())
+            }
         }
         runCatching {
             val f = File(dir, "private.bin")
@@ -82,12 +87,17 @@ object Store {
 
     /** 整体替换（导入备份时用） */
     @Synchronized
-    fun replaceAll(c: ConfigState, p: PrivateState) {
+    fun replaceAll(c0: ConfigState, p: PrivateState) {
+        val c = migrateConfig(c0)
         _config.value = c
         _private.value = p
         write("config.json", json.encodeToString(ConfigState.serializer(), c).toByteArray())
         write("private.bin", Crypto.encrypt(json.encodeToString(PrivateState.serializer(), p).toByteArray()))
     }
+
+    /** 老版本设置升级：4.0.13 删了首页「微体素」风格，存的是 voxel（或别的旧值）的一律换成 HD-2D */
+    fun migrateConfig(c: ConfigState): ConfigState =
+        if (c.settings.sceneStyle == "hd2d") c else c.copy(settings = c.settings.copy(sceneStyle = "hd2d"))
 
     /** 注销账号：内存里的数据全部换回默认值（文件由 AccountEraser 删） */
     @Synchronized

@@ -25,7 +25,7 @@ import org.json.JSONObject
  *
  * Unity 运行时一个进程只能起一次，销毁就会结束进程，所以这里全程只建一个播放器，
  * 用 Application Context 创建（MainActivity 重建、退出再进都不受影响），首页显示时挂上、离开时摘下并暂停。
- * 也因为这样，场景风格（微体素 / HD-2D）只在进程启动后第一次进首页时读一次，换风格要重启 App。
+ * 首页特殊场景只有 HD-2D 一种风格（4.0.13 删了微体素）。
  *
  * Kotlin 管数据，Unity 管场景。两边只传 JSON，协议见 unity/Assets/Scripts/AndroidBridge.cs：
  *   发过去：pet / stats / env / feed / drink / wardrobe_open / wardrobe_close / goto / coins / spin / sleep / pet_tap / say / expand / collapse
@@ -49,7 +49,7 @@ object UnityHost {
     var ready by mutableStateOf(false)
         private set
 
-    /** 全屋里走进了室内宠物屋（顶上的标题跟着变） */
+    /** 现在在宠物部屋场景里（顶上的标题、相框铭牌跟着变） */
     var inPetRoom by mutableStateOf(false)
         private set
 
@@ -79,8 +79,8 @@ object UnityHost {
     /** 只打包了 64 位 ARM 和 x86_64 的 Unity 运行库；其他架构的手机退回原来的 2D 动态场景 */
     val supported: Boolean = Build.SUPPORTED_ABIS.any { it == "arm64-v8a" || it == "x86_64" }
 
-    /** 这次进程里 Unity 用的风格：第一次被问到时定下来，之后设置里改了也要重启才换 */
-    val launchStyle: String by lazy { Store.config.value.settings.sceneStyle.takeIf { it == "hd2d" } ?: "voxel" }
+    /** Unity 场景风格：只剩 HD-2D（保留这个名字给老调用方） */
+    const val launchStyle: String = "hd2d"
 
     /** Unity 已经启动过（再换风格就得重启 App） */
     val started get() = player != null
@@ -210,13 +210,16 @@ object UnityHost {
             "say" -> if (evt.optString("source") == "res") resSay = evt.optString("text") to System.currentTimeMillis()
             "ready" -> {
                 ready = true
+                if (evt.has("prop")) inPetRoom = evt.optString("prop") == "PetRoom"
                 // Unity 刚起来（或场景重载）：把缓存的常态、数值、天气补发一遍；展开状态也同步过去
                 listOf(lastPet, lastStats, lastEnv).forEach { s -> s?.let { UnityPlayer.UnitySendMessage(BRIDGE, "OnMessage", it) } }
                 if (expanded) send(op("expand").put("source", "resume"))
             }
             "request_expand" -> expand(evt.optString("source", "door"))
-            "pet_room" -> inPetRoom = evt.optString("source") == "enter"
-            "collapsed" -> inPetRoom = false
+            // HD-2D 小镇 ↔ 宠物部屋（走进光圈换场景）：相框铭牌和全屋标题跟着变
+            "scene_change" -> inPetRoom = evt.optString("prop") == "PetRoom"
+            // Unity 读不了立体小镇的烘焙资源：清掉缓存，首页换回 2D 动态场景
+            "diorama_failed" -> DioramaPack.markBroken(com.mengding.app.MengDingApp.app)
         }
         _events.tryEmit(evt)
     }
@@ -233,5 +236,9 @@ object UnityHost {
 object UnityBridge {
     @JvmStatic fun isEmbedded(): Boolean = true
     @JvmStatic fun sceneStyle(): String = UnityHost.launchStyle
+    /** HD-2D 资源包解压到的目录（files/hd2d），见 DioramaPack */
+    @JvmStatic fun hd2dDir(): String = java.io.File(com.mengding.app.MengDingApp.app.filesDir, "hd2d").absolutePath
+    /** 首页小镇资源包解压好了没有（App 升级换了包时，旧缓存在重新解压期间不能读） */
+    @JvmStatic fun hd2dReady(): Boolean = DioramaPack.state == DioramaPack.State.Ready
     @JvmStatic fun onUnityMessage(json: String) { UnityHost.onMessage(json) }
 }

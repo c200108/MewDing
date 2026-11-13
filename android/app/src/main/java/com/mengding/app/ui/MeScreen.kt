@@ -737,33 +737,6 @@ fun SpeechPage() {
     }
 }
 
-/** 3D 小屋的美术风格。Unity 运行时一个进程只能起一次，已经进过首页的话要重启 App 才换得过来。 */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun SceneStylePicker(current: String) {
-    val ctx = androidx.compose.ui.platform.LocalContext.current
-    var askRestart by remember { mutableStateOf(false) }
-    SectionTitle("特殊场景风格")
-    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("voxel" to "微体素", "hd2d" to "HD-2D").forEach { (k, label) ->
-            Pill(label, current == k) {
-                if (current == k) return@Pill
-                setS { it.copy(sceneStyle = k) }
-                if (com.mengding.app.unity.UnityHost.started && k != com.mengding.app.unity.UnityHost.launchStyle) askRestart = true
-            }
-        }
-    }
-    if (askRestart) {
-        AlertDialog(
-            onDismissRequest = { askRestart = false },
-            title = { Text("重启后生效") },
-            text = { Text("换风格要重启一下应用，数据都已保存。现在重启吗？") },
-            confirmButton = { TextButton({ askRestart = false; com.mengding.app.unity.UnityHost.restartApp(ctx) }) { Text("立即重启") } },
-            dismissButton = { TextButton({ askRestart = false }) { Text("稍后") } },
-        )
-    }
-}
-
 /** 界面主题选择：6 套（经典 + 5 套插画主题），点一下立即生效 */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -780,8 +753,7 @@ fun ThemePage() {
                 Pill(label, !on3d && cfg.settings.homeScene == k) { setS { it.copy(homeScene = k, home3d = false) } }
             }
         }
-        // 选了「特殊场景」才出现它的风格选择
-        if (com.mengding.app.unity.UnityHost.supported && cfg.settings.home3d) SceneStylePicker(cfg.settings.sceneStyle)
+        // 「特殊场景」只有 HD-2D 一种风格，不再出风格选择
         StylePicker(cfg.settings.uiStyle)
         SectionTitle("界面主题")
         Themes.all.forEach { t ->

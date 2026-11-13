@@ -105,8 +105,8 @@ data class Settings(
     val homeScene: String = "auto",
     /** 首页用 3D 小屋（Unity）；关掉或手机不支持时用上面的 2D 场景。新字段，老用户升级后也默认打开 */
     val home3d: Boolean = true,
-    /** 3D 小屋的美术风格：voxel 微体素 / hd2d（3D 低模 + 像素贴图）。Unity 一个进程只能起一次，换了要重启 App 才生效 */
-    val sceneStyle: String = "voxel",
+    /** 特殊场景（Unity 首页）的风格：只剩 hd2d（4.0.13 删了 voxel 微体素，老设置读入时由 Store.migrateConfig 换成 hd2d） */
+    val sceneStyle: String = "hd2d",
     /** 首页 2D 场景说话气泡的样式：cream 奶油可爱 / comic 卡通漫画 / line 简约线条 / ink 国漫水墨 / pixel 像素复古（ui/SceneBubble.kt） */
     val bubbleStyle: String = "cream",
     /** 已经看过的新手轻提示（按页面记：home / notes / shop / games / room / floating） */
