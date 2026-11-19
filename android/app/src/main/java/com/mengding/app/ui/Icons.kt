@@ -179,6 +179,10 @@ object Ic {
         moveTo(4f, 16f); lineTo(9f, 11f); lineTo(13f, 15f); lineTo(15.5f, 12.5f); lineTo(20f, 17f)
         moveTo(15.5f, 8.5f); lineTo(15.6f, 8.5f)
     }
+    val Copy = icon("copy") {
+        moveTo(9f, 8f); lineTo(19f, 8f); lineTo(19f, 20f); lineTo(9f, 20f); close()
+        moveTo(15f, 8f); lineTo(15f, 4f); lineTo(5f, 4f); lineTo(5f, 16f); lineTo(9f, 16f)
+    }
     val Table = icon("table") {
         moveTo(4f, 5f); lineTo(20f, 5f); lineTo(20f, 19f); lineTo(4f, 19f); close()
         moveTo(4f, 9.7f); lineTo(20f, 9.7f); moveTo(4f, 14.3f); lineTo(20f, 14.3f); moveTo(10f, 5f); lineTo(10f, 19f)

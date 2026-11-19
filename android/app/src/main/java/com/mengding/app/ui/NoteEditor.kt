@@ -32,7 +32,22 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.ParagraphStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextIndent
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -85,6 +100,7 @@ import com.mengding.app.data.Repeat
 import com.mengding.app.data.Store
 import com.mengding.app.data.TextSpec
 import com.mengding.app.logic.NoteMedia
+import com.mengding.app.logic.NoteParas
 import com.mengding.app.logic.NotePlayer
 import com.mengding.app.logic.NoteRecorder
 import com.mengding.app.logic.Time
@@ -103,7 +119,7 @@ private fun newId() = UUID.randomUUID().toString()
 private fun isEmpty(n: Note) = n.title.isBlank() && n.reminder == null &&
     n.blocks.all { it.type == BlockType.TEXT && it.text.isBlank() }
 
-/** 便签编辑：按段落（块）编辑，每段可以单独设字号、粗斜体、下划线、删除线、颜色、对齐、列表、引用 */
+/** 便签编辑：连续文本编辑（相邻文字段落合成一个输入框），每段可以单独设字号、粗斜体、下划线、删除线、颜色、对齐、列表、引用 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NoteEditorPage(id: String) {
@@ -116,8 +132,12 @@ fun NoteEditorPage(id: String) {
     val stored = remember(id) { Store.notesNow.notes.firstOrNull { it.id == id } }
     if (stored == null) { LaunchedEffect(Unit) { Nav.back() }; return }
     var note by remember(id) { mutableStateOf(stored) }
-    var focused by remember { mutableStateOf<String?>(null) }
-    var pendingFocus by remember { mutableStateOf<String?>(null) }
+    /** 光标 / 选区覆盖到的段落 id（格式、列表按钮作用在这些段上） */
+    var focused by remember { mutableStateOf<List<String>>(emptyList()) }
+    /** 要把光标放到哪一段的第几个字（-1 = 段尾） */
+    var pendingFocus by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    /** 在文字开头按退格，问要不要删掉上面的图片 / 视频 / 音频 / 表格 */
+    var askDeleteMedia by remember { mutableStateOf<Block?>(null) }
     var showFmt by remember { mutableStateOf(false) }
     var showReminder by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -132,10 +152,10 @@ fun NoteEditorPage(id: String) {
     /** 插到当前段落后面；插入的不是文字时，后面再补一个空段落方便继续写 */
     fun insert(b: Block) = edit { n ->
         val list = n.blocks.toMutableList()
-        val idx = list.indexOfFirst { it.id == focused }.let { if (it < 0) list.lastIndex else it }
+        val idx = list.indexOfLast { it.id in focused }.let { if (it < 0) list.lastIndex else it }
         list.add(idx + 1, b)
         if (b.type != BlockType.TEXT && (idx + 2 > list.lastIndex || list[idx + 2].type != BlockType.TEXT)) {
-            val t = Block(newId()); list.add(idx + 2, t); pendingFocus = t.id
+            val t = Block(newId()); list.add(idx + 2, t); pendingFocus = t.id to 0
         }
         n.copy(blocks = list)
     }
@@ -237,7 +257,18 @@ fun NoteEditorPage(id: String) {
         )
     }
 
-    val focusedBlock = note.blocks.firstOrNull { it.id == focused && it.type == BlockType.TEXT }
+    val focusedBlocks = note.blocks.filter { it.id in focused && it.type == BlockType.TEXT }
+    val focusedBlock = focusedBlocks.firstOrNull()
+    fun setSpecs(f: (TextSpec) -> TextSpec) {
+        val ids = focusedBlocks.map { it.id }.toSet()
+        edit { n -> n.copy(blocks = n.blocks.map { if (it.id in ids) it.copy(spec = f(it.spec)) else it }) }
+    }
+    fun deleteMedia(b: Block) {
+        if (b.type == BlockType.AUDIO) NotePlayer.stop()
+        NoteMedia.delete(b.file)
+        edit { n -> n.copy(blocks = n.blocks.filterNot { it.id == b.id }) }
+    }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     CoachFor("notes", listOf(
         Coach.Tip("note_share", "右上角可以把便签分享成图片、文字或文件"),
         Coach.Tip("note_remind", "点小铃铛给便签定个时，到点宠物会提醒你"),
@@ -276,53 +307,59 @@ fun NoteEditorPage(id: String) {
                     Gap(8.dp)
                 }
             }
-            itemsIndexed(note.blocks, key = { _, b -> b.id }) { i, b ->
-                when (b.type) {
-                    BlockType.TEXT -> {
-                        val number = run {
-                            var k = 1; var j = i - 1
-                            while (j >= 0 && note.blocks[j].type == BlockType.TEXT && note.blocks[j].spec.list == 2) { k++; j-- }
-                            k
-                        }
-                        TextBlock(
-                            b, number, pendingFocus == b.id,
-                            onFocus = { focused = b.id; if (pendingFocus == b.id) pendingFocus = null },
-                            onText = { t -> setBlock(b.id) { it.copy(text = t) } },
-                            onCheck = { setBlock(b.id) { it.copy(checked = !it.checked) } },
-                            onSplit = { before, after ->
-                                val nb = Block(newId(), text = after,
-                                    spec = b.spec.copy(size = if (b.spec.size == 3) 1 else b.spec.size))
-                                edit { n ->
-                                    val l = n.blocks.toMutableList()
-                                    val idx = l.indexOfFirst { it.id == b.id }
-                                    l[idx] = l[idx].copy(text = before)
-                                    l.add(idx + 1, nb)
+            // 相邻的文字段落合成一个连续输入框（像 Word 一样跨段选择、退格并段、全选复制）；图片、视频等仍是独立块
+            val segs = noteSegments(note.blocks)
+            items(segs, key = { it.key }) { seg ->
+                val runBlocks = seg.texts
+                if (runBlocks != null) {
+                    TextRun(
+                        runBlocks, pendingFocus,
+                        onFocusParas = { ids -> focused = ids },
+                        onPendingDone = { pendingFocus = null },
+                        onBlocks = { oldIds, nb ->
+                            edit { n ->
+                                val l = n.blocks.toMutableList()
+                                val at = l.indexOfFirst { it.id in oldIds }
+                                if (at < 0) n else {
+                                    l.removeAll { it.id in oldIds }
+                                    l.addAll(at, nb)
                                     n.copy(blocks = l)
                                 }
-                                pendingFocus = nb.id
-                            },
-                            onDeleteEmpty = {
-                                if (note.blocks.size > 1) {
-                                    val prev = note.blocks.getOrNull(i - 1)?.takeIf { it.type == BlockType.TEXT }
-                                    edit { n -> n.copy(blocks = n.blocks.filterNot { it.id == b.id }) }
-                                    prev?.let { pendingFocus = it.id }
-                                }
-                            },
-                        )
+                            }
+                        },
+                        onCheck = { bid -> setBlock(bid) { it.copy(checked = !it.checked) } },
+                        onBackAtStart = {
+                            val ids = runBlocks.map { it.id }.toSet()
+                            val at = note.blocks.indexOfFirst { it.id in ids }
+                            val prev = note.blocks.getOrNull(at - 1)
+                            if (prev != null) {
+                                if (runBlocks.all { it.text.isEmpty() }) {
+                                    // 空的这段直接删掉，光标回到上面最近的文字末尾
+                                    val prevText = note.blocks.subList(0, at).lastOrNull { it.type == BlockType.TEXT }
+                                    edit { n -> n.copy(blocks = n.blocks.filterNot { it.id in ids }) }
+                                    prevText?.let { pendingFocus = it.id to -1 }
+                                } else askDeleteMedia = prev
+                            }
+                        },
+                    )
+                } else {
+                    val b = seg.media!!
+                    when (b.type) {
+                        BlockType.IMAGE -> ImageBlock(b) { deleteMedia(b) }
+                        BlockType.VIDEO -> VideoBlock(b) { deleteMedia(b) }
+                        BlockType.AUDIO -> AudioBlock(b) { deleteMedia(b) }
+                        BlockType.TABLE -> TableBlock(b, onChange = { t -> setBlock(b.id) { it.copy(table = t) } },
+                            onDelete = { deleteMedia(b) })
+                        BlockType.TEXT -> Unit
                     }
-                    BlockType.IMAGE -> ImageBlock(b) { NoteMedia.delete(b.file); edit { n -> n.copy(blocks = n.blocks - b) } }
-                    BlockType.VIDEO -> VideoBlock(b) { NoteMedia.delete(b.file); edit { n -> n.copy(blocks = n.blocks - b) } }
-                    BlockType.AUDIO -> AudioBlock(b) { NotePlayer.stop(); NoteMedia.delete(b.file); edit { n -> n.copy(blocks = n.blocks - b) } }
-                    BlockType.TABLE -> TableBlock(b, onChange = { t -> setBlock(b.id) { it.copy(table = t) } },
-                        onDelete = { edit { n -> n.copy(blocks = n.blocks - b) } })
                 }
             }
             item {
                 // 点空白处在末尾接着写
                 Box(Modifier.fillMaxWidth().heightIn(min = 160.dp).clickable {
                     val last = note.blocks.lastOrNull()
-                    if (last != null && last.type == BlockType.TEXT && last.text.isEmpty()) pendingFocus = last.id
-                    else { val t = Block(newId()); edit { n -> n.copy(blocks = n.blocks + t) }; pendingFocus = t.id }
+                    if (last != null && last.type == BlockType.TEXT) pendingFocus = last.id to -1
+                    else { val t = Block(newId()); edit { n -> n.copy(blocks = n.blocks + t) }; pendingFocus = t.id to 0 }
                 })
             }
         }
@@ -336,7 +373,10 @@ fun NoteEditorPage(id: String) {
             onCancel = { recording = false; recorder.cancel() })
 
         if (showFmt) {
-            if (focusedBlock != null) FormatPanel(focusedBlock.spec) { sp -> setBlock(focusedBlock.id) { it.copy(spec = sp) } }
+            if (focusedBlock != null) FormatPanel(focusedBlock.spec) { sp ->
+                val before = focusedBlock.spec
+                setSpecs { NoteParas.applyDiff(before, sp, it) }
+            }
             else Text("先点一下要调整的那一段文字", Modifier.fillMaxWidth().background(mdSurface()).padding(14.dp), fontSize = 13.sp, color = P.sub)
         }
         // 工具栏
@@ -346,7 +386,7 @@ fun NoteEditorPage(id: String) {
         ) {
             ToolBtn(Ic.TextFmt, "格式", showFmt) { showFmt = !showFmt }
             ToolBtn(Ic.Bullets, "列表") {
-                focusedBlock?.let { fb -> setBlock(fb.id) { it.copy(spec = it.spec.copy(list = (it.spec.list + 1) % 4)) } }
+                focusedBlock?.let { fb -> val nl = (fb.spec.list + 1) % 4; setSpecs { it.copy(list = nl) } }
                     ?: toast("先点一下要变成列表的那一段")
             }
             ToolBtn(Ic.Image, "图片") { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
@@ -360,6 +400,10 @@ fun NoteEditorPage(id: String) {
             ToolBtn(Ic.Video, "视频") { pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
             ToolBtn(Ic.Table, "表格") { insert(Block(newId(), BlockType.TABLE, table = List(3) { List(3) { "" } })) }
             ToolBtn(Ic.Bell, "提醒", note.reminder?.enabled == true) { showReminder = true }
+            ToolBtn(Ic.Copy, "复制全文") {
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(noteText(note).trimEnd()))
+                toast("已复制整条便签的文字")
+            }
         }
     }
 
@@ -369,6 +413,23 @@ fun NoteEditorPage(id: String) {
         Reminders.reschedule(ctx)
         showReminder = false
         r?.let { rr -> Reminders.noteNext(rr)?.let { toast("下次提醒：${Time.dateTimeOf(it).format(DateTimeFormatter.ofPattern("M 月 d 日 HH:mm"))}") } }
+    }
+    askDeleteMedia?.let { m ->
+        val what = when (m.type) { BlockType.IMAGE -> "图片"; BlockType.VIDEO -> "视频"; BlockType.AUDIO -> "音频"; BlockType.TABLE -> "表格"; else -> "内容" }
+        AlertDialog(
+            onDismissRequest = { askDeleteMedia = null },
+            title = { Text("删除上面的$what？") },
+            confirmButton = {
+                TextButton({
+                    askDeleteMedia = null
+                    // 删掉后上下两段文字会接成一个输入框，光标停在原来的位置
+                    val after = note.blocks.getOrNull(note.blocks.indexOfFirst { it.id == m.id } + 1)
+                    deleteMedia(m)
+                    after?.takeIf { it.type == BlockType.TEXT }?.let { pendingFocus = it.id to 0 }
+                }) { Text("删除", color = P.danger) }
+            },
+            dismissButton = { TextButton({ askDeleteMedia = null }) { Text("取消") } },
+        )
     }
     videoProgress?.let { p -> MdProgress("正在插入视频", p, "视频会复制一份存进萌叮，原视频不受影响") { videoCancel.set(true) } }
     if (confirmDelete) AlertDialog(
@@ -406,72 +467,202 @@ private fun ToolBtn(icon: ImageVector, label: String, active: Boolean = false, o
     }
 }
 
-@Composable
-private fun TextBlock(
-    b: Block, number: Int, wantFocus: Boolean,
-    onFocus: () -> Unit, onText: (String) -> Unit, onCheck: () -> Unit,
-    onSplit: (String, String) -> Unit, onDeleteEmpty: () -> Unit,
-) {
+/** 编辑器里的一节：一串连续的文字段落（texts），或一个图片 / 视频 / 音频 / 表格块（media） */
+private class Seg(val key: String, val texts: List<Block>?, val media: Block?)
+
+/** key 用前面那个媒体块的 id，打字时段落 id 变了输入框也不会重建、不丢光标 */
+private fun noteSegments(blocks: List<Block>): List<Seg> {
+    val out = ArrayList<Seg>()
+    var run = ArrayList<Block>()
+    var prevKey = "head"
+    fun flush() { if (run.isNotEmpty()) { out += Seg("run:$prevKey", run, null); run = ArrayList() } }
+    for (b in blocks) {
+        if (b.type == BlockType.TEXT) run += b
+        else { flush(); out += Seg(b.id, null, b); prevKey = b.id }
+    }
+    flush()
+    return out
+}
+
+private class RunRef(var blocks: List<Block>)
+
+private fun fontSp(sp: TextSpec) = listOf(13, 16, 19, 23)[sp.size.coerceIn(0, 3)]
+private const val QUOTE_INDENT = 12f
+private fun listIndent(sp: TextSpec) = if (sp.list == 0) 0f else maxOf(26f, fontSp(sp) * 1.6f)
+
+private fun paraSpan(b: Block, ink: Color, sub: Color): SpanStyle {
     val sp = b.spec
-    var tfv by remember(b.id) { mutableStateOf(TextFieldValue(b.text, TextRange(b.text.length))) }
-    if (tfv.text != b.text) tfv = TextFieldValue(b.text, TextRange(b.text.length))
-    val fr = remember(b.id) { FocusRequester() }
-    LaunchedEffect(wantFocus) { if (wantFocus) runCatching { fr.requestFocus() } }
-    val color = if (b.checked) P.sub else NoteColors.getOrElse(sp.color) { Color.Unspecified }.takeIf { it != Color.Unspecified } ?: P.ink
     val deco = listOfNotNull(
         TextDecoration.Underline.takeIf { sp.underline },
         TextDecoration.LineThrough.takeIf { sp.strike || b.checked },
     )
-    val style = TextStyle(
-        fontSize = listOf(13, 16, 19, 23)[sp.size.coerceIn(0, 3)].sp,
+    return SpanStyle(
+        color = if (b.checked) sub else NoteColors.getOrElse(sp.color) { Color.Unspecified }.takeIf { it != Color.Unspecified } ?: ink,
+        fontSize = fontSp(sp).sp,
         fontWeight = if (sp.bold || sp.size == 3) FontWeight.Bold else FontWeight.Normal,
         fontStyle = if (sp.italic) FontStyle.Italic else FontStyle.Normal,
         textDecoration = if (deco.isEmpty()) null else TextDecoration.combine(deco),
-        color = color,
-        textAlign = when (sp.align) { 1 -> TextAlign.Center; 2 -> TextAlign.End; else -> TextAlign.Start },
-        lineHeight = (listOf(13, 16, 19, 23)[sp.size.coerceIn(0, 3)] * 1.5f).sp,
     )
-    Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min)
-            .then(if (sp.quote) Modifier.background(P.mintSoft.copy(alpha = 0.5f), RoundedCornerShape(6.dp)) else Modifier)
-            .padding(vertical = 3.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        if (sp.quote) { Box(Modifier.width(3.dp).fillMaxHeight().background(P.mint)); Spacer(Modifier.width(8.dp)) }
-        when (sp.list) {
-            1 -> Text("•", Modifier.width(18.dp), style = style.copy(textAlign = TextAlign.Start, textDecoration = null))
-            2 -> Text("$number.", Modifier.widthIn(min = 22.dp).padding(end = 4.dp), style = style.copy(textAlign = TextAlign.Start, textDecoration = null))
-            3 -> Box(
-                Modifier.padding(top = 3.dp, end = 8.dp).size(18.dp).clip(RoundedCornerShape(5.dp))
-                    .border(2.dp, P.mint, RoundedCornerShape(5.dp)).background(if (b.checked) P.mint else Color.Transparent)
-                    .clickable(onClick = onCheck),
-                contentAlignment = Alignment.Center,
-            ) { if (b.checked) Icon(Ic.Check, null, Modifier.size(14.dp), tint = Color.White) }
+}
+
+private fun paraStyle(sp: TextSpec): ParagraphStyle {
+    val ind = (if (sp.quote) QUOTE_INDENT else 0f) + listIndent(sp)
+    return ParagraphStyle(
+        textAlign = when (sp.align) { 1 -> TextAlign.Center; 2 -> TextAlign.End; else -> TextAlign.Start },
+        lineHeight = (fontSp(sp) * 1.5f).sp,
+        textIndent = if (ind > 0f) TextIndent(ind.sp, ind.sp) else null,
+    )
+}
+
+/** 按段给整段文字上样式（每段一个 ParagraphStyle + SpanStyle） */
+private fun styledRun(text: String, spans: List<SpanStyle>, paras: List<ParagraphStyle>) = buildAnnotatedString {
+    append(text)
+    var start = 0
+    text.split('\n').forEachIndexed { i, line ->
+        val end = start + line.length
+        val pEnd = if (end < text.length) end + 1 else end
+        if (pEnd > start) {
+            paras.getOrNull(i)?.let { addStyle(it, start, pEnd) }
+            spans.getOrNull(i)?.let { addStyle(it, start, pEnd) }
         }
-        Box(Modifier.weight(1f)) {
-            if (tfv.text.isEmpty() && sp.list == 0 && !sp.quote) Text("写点什么…", style = style.copy(color = P.line))
-            BasicTextField(
-                tfv,
-                onValueChange = { v ->
-                    val cut = v.selection.start
-                    if (v.selection.collapsed && cut > 0 && v.text.length == tfv.text.length + 1 && v.text[cut - 1] == '\n') {
-                        val before = v.text.substring(0, cut - 1)
-                        val after = v.text.substring(cut)
-                        tfv = TextFieldValue(before, TextRange(before.length))
-                        onSplit(before, after)
-                        return@BasicTextField
+        start = end + 1
+    }
+}
+
+/**
+ * 一串连续文字段落合成一个输入框：跨段选择、退格并到上一段、回车分段、长按全选复制都跟 Word 一样。
+ * 每段的格式（字号、颜色、对齐、列表、引用、待办）仍按段保存，用 VisualTransformation 画出来。
+ */
+@Composable
+private fun TextRun(
+    blocks: List<Block>, pending: Pair<String, Int>?,
+    onFocusParas: (List<String>) -> Unit, onPendingDone: () -> Unit,
+    onBlocks: (Set<String>, List<Block>) -> Unit,
+    onCheck: (String) -> Unit, onBackAtStart: () -> Unit,
+) {
+    val text = NoteParas.join(blocks)
+    val ref = remember { RunRef(blocks) }
+    ref.blocks = blocks
+    var tfv by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
+    if (tfv.text != text) tfv = TextFieldValue(text, TextRange(tfv.selection.end.coerceAtMost(text.length)))
+    val fr = remember { FocusRequester() }
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    fun report(v: TextFieldValue, list: List<Block>) {
+        if (list.isEmpty()) return
+        val a = NoteParas.lineAt(v.text, v.selection.min).coerceIn(0, list.lastIndex)
+        val b = NoteParas.lineAt(v.text, v.selection.max).coerceIn(a, list.lastIndex)
+        onFocusParas(list.subList(a, b + 1).map { it.id })
+    }
+
+    LaunchedEffect(pending) {
+        val p = pending ?: return@LaunchedEffect
+        val list = ref.blocks
+        val i = list.indexOfFirst { it.id == p.first }
+        if (i < 0) return@LaunchedEffect
+        val len = list[i].text.length
+        val off = NoteParas.starts(list)[i] + (if (p.second < 0) len else p.second.coerceIn(0, len))
+        tfv = tfv.copy(selection = TextRange(off))
+        runCatching { fr.requestFocus() }
+        report(tfv, list)
+        onPendingDone()
+    }
+
+    val ink = P.ink
+    val sub = P.sub
+    val mint = P.mint
+    val quoteBg = P.mintSoft.copy(alpha = 0.5f)
+    val spans = blocks.map { paraSpan(it, ink, sub) }
+    val paras = blocks.map { paraStyle(it.spec) }
+    val vt = remember(spans, paras) {
+        VisualTransformation { t -> TransformedText(styledRun(t.text, spans, paras), OffsetMapping.Identity) }
+    }
+    val density = LocalDensity.current
+    val quotePx = with(density) { QUOTE_INDENT.sp.toPx() }
+    val barPx = with(density) { 3.dp.toPx() }
+    val cornerPx = with(density) { 6.dp.toPx() }
+    val quoteFlags = blocks.map { it.spec.quote }
+
+    Box(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        val only = blocks.singleOrNull()
+        if (text.isEmpty() && only != null && only.spec.list == 0 && !only.spec.quote) {
+            Text("写点什么…", style = TextStyle(fontSize = fontSp(only.spec).sp, lineHeight = (fontSp(only.spec) * 1.5f).sp, color = P.line))
+        }
+        BasicTextField(
+            tfv,
+            onValueChange = { v ->
+                val old = ref.blocks
+                val nb = if (v.text != NoteParas.join(old)) NoteParas.remap(old, v.text, v.selection.end, ::newId) else old
+                tfv = v
+                if (nb !== old) {
+                    ref.blocks = nb
+                    onBlocks(old.map { it.id }.toSet(), nb)
+                }
+                report(v, nb)
+            },
+            modifier = Modifier.fillMaxWidth().focusRequester(fr)
+                .onFocusChanged { if (it.isFocused) report(tfv, ref.blocks) }
+                .onPreviewKeyEvent {
+                    if (it.key == Key.Backspace && it.type == KeyEventType.KeyDown && tfv.selection.collapsed && tfv.selection.start == 0) {
+                        onBackAtStart(); true
+                    } else false
+                }
+                .drawBehind {
+                    val l = layout ?: return@drawBehind
+                    val lt = l.layoutInput.text.text
+                    var st = 0
+                    lt.split('\n').forEachIndexed { i, line ->
+                        val en = st + line.length
+                        if (quoteFlags.getOrElse(i) { false } && st <= lt.length) {
+                            val top = l.getLineTop(l.getLineForOffset(st))
+                            val bottom = l.getLineBottom(l.getLineForOffset(en.coerceAtMost(lt.length)))
+                            drawRoundRect(quoteBg, Offset(0f, top), Size(size.width, bottom - top), CornerRadius(cornerPx, cornerPx))
+                            drawRect(mint, Offset(0f, top), Size(barPx, bottom - top))
+                        }
+                        st = en + 1
                     }
-                    tfv = v
-                    if (v.text != b.text) onText(v.text)
                 },
-                modifier = Modifier.fillMaxWidth().focusRequester(fr)
-                    .onFocusChanged { if (it.isFocused) onFocus() }
-                    .onPreviewKeyEvent {
-                        if (it.key == Key.Backspace && it.type == KeyEventType.KeyDown && tfv.text.isEmpty()) { onDeleteEmpty(); true } else false
-                    },
-                textStyle = style,
-                cursorBrush = SolidColor(P.mint),
-            )
+            textStyle = TextStyle(fontSize = 16.sp, color = ink),
+            cursorBrush = SolidColor(mint),
+            visualTransformation = vt,
+            onTextLayout = { layout = it },
+        )
+        // 列表符号、编号、待办方框：按每段第一行的位置画在缩进里
+        layout?.let { l ->
+            val lt = l.layoutInput.text.text
+            var st = 0
+            var num = 0
+            lt.split('\n').forEachIndexed { i, line ->
+                val b = blocks.getOrNull(i)
+                val start = st
+                st += line.length + 1
+                if (b == null) return@forEachIndexed
+                num = if (b.spec.list == 2) num + 1 else 0
+                if (b.spec.list == 0) return@forEachIndexed
+                val ln = l.getLineForOffset(start.coerceAtMost(lt.length))
+                val top = l.getLineTop(ln)
+                val bottom = l.getLineBottom(ln)
+                val x = if (b.spec.quote) quotePx.toInt() else 0
+                val fs = fontSp(b.spec)
+                when (b.spec.list) {
+                    1, 2 -> Text(
+                        if (b.spec.list == 1) "•" else "$num.",
+                        Modifier.offset { IntOffset(x, top.toInt()) },
+                        style = TextStyle(fontSize = fs.sp, lineHeight = (fs * 1.5f).sp, color = if (b.checked) sub else ink,
+                            fontWeight = if (b.spec.bold || b.spec.size == 3) FontWeight.Bold else FontWeight.Normal),
+                    )
+                    3 -> {
+                        val boxPx = with(density) { 18.dp.toPx() }
+                        Box(
+                            Modifier.offset { IntOffset(x, (top + (bottom - top - boxPx) / 2f).toInt()) }
+                                .size(18.dp).clip(RoundedCornerShape(5.dp))
+                                .border(2.dp, mint, RoundedCornerShape(5.dp)).background(if (b.checked) mint else Color.Transparent)
+                                .clickable { onCheck(b.id) },
+                            contentAlignment = Alignment.Center,
+                        ) { if (b.checked) Icon(Ic.Check, null, Modifier.size(14.dp), tint = Color.White) }
+                    }
+                }
+            }
         }
     }
 }
