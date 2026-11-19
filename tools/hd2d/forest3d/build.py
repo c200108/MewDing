@@ -15,7 +15,7 @@ ap.add_argument('out'); ap.add_argument('--seed', type=int, default=20261119)
 ap.add_argument('--samples', type=int, default=64); ap.add_argument('--res', default='1280x720')
 ap.add_argument('--cat', default=''); ap.add_argument('--fstop', type=float, default=0.9)
 ap.add_argument('--views', default='center'); ap.add_argument('--overview', action='store_true'); ap.add_argument('--noexport', action='store_true'); ap.add_argument('--norender', action='store_true')
-A = ap.parse_args()
+A = ap.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:])   # 兼容 blender -b -P build.py -- <参数>
 OUT = os.path.abspath(A.out); TEX = os.path.join(OUT, 'tex'); os.makedirs(TEX, exist_ok=True)
 rng = np.random.default_rng(A.seed)
 PPM = PT.PPM
@@ -704,7 +704,8 @@ def export_unity():
     for f in os.listdir(TEX):
         if f != 'ground.png' or True: shutil.copy(os.path.join(TEX, f), td)
     hfov = math.degrees(cam.data.angle_x)
-    json.dump(dict(hfov=hfov, fstop=A.fstop, ppm=PPM, seed=A.seed, walk=list(WALK), paths=[[list(p) for p in P] for P in PATHS],
+    json.dump(dict(hfov=hfov, fstop=A.fstop, ppm=PPM, seed=A.seed, walk=list(WALK), paths=[[list(p) for p in P] for P in PATHS], stream=[list(p) for p in STREAM], stream_hw=STREAM_HW, pond=list(POND), pads=[list(p) for p in PADS],
+                   bridge=[8.6, -3.1, 1.45, .7], trees=[[round(a, 2), round(b, 2), round(c, 2)] for a, b, c in placed], portal=list(PORTAL),
                    mats=[dict(name=m.name, info=dict(tex=(next((n.image.name.rsplit('.', 1)[0] for n in m.node_tree.nodes if n.type == 'TEX_IMAGE'), None)),
                                            color=list(m.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value)[:3],
                                            rough=m.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value,
