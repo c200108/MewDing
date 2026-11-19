@@ -249,7 +249,18 @@ object AppFonts {
     }
 }
 
-/** 我的 → 显示字体：选一种字体，没下载的点一下联网下载 */
+/** 字号档位（4.0.20）：在系统字号上再乘的倍数，存在 settings.fontScale；标准 = 1 = 原来的字号 */
+object FontSizes {
+    data class Level(val scale: Float, val name: String)
+    val levels = listOf(Level(0.9f, "小"), Level(1f, "标准"), Level(1.12f, "大"), Level(1.25f, "特大"))
+    const val MIN = 0.9f
+    const val MAX = 1.25f
+    /** 读到坏值（老版本没有这个字段会是默认 1；手改配置可能是 0 或很大）时夹到范围内 */
+    fun clamp(v: Float): Float = if (v.isNaN() || v <= 0f) 1f else v.coerceIn(MIN, MAX)
+    fun nameOf(v: Float): String = levels.minByOrNull { kotlin.math.abs(it.scale - clamp(v)) }!!.name
+}
+
+/** 我的 → 显示字体：先选字号，再选一种字体（没下载的点一下联网下载） */
 @Composable
 fun FontPage() {
     val ctx = LocalContext.current
@@ -260,6 +271,30 @@ fun FontPage() {
     // 删除字体后让列表刷新
     var ver by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     PageScaffold("显示字体") {
+        Text("字号", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = P.ink)
+        Gap(6.dp)
+        val cur = FontSizes.clamp(cfg.settings.fontScale)
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth()) {
+            FontSizes.levels.forEachIndexed { i, lv ->
+                val on = kotlin.math.abs(lv.scale - cur) < 0.01f
+                Column(
+                    Modifier.weight(1f).padding(end = if (i < FontSizes.levels.lastIndex) 8.dp else 3.dp, bottom = 3.dp)
+                        .mdTile(on, radius = 16.dp)
+                        .clickable { Store.update { it.copy(settings = it.settings.copy(fontScale = lv.scale)) } }
+                        .padding(vertical = 10.dp),
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                ) {
+                    // 档位按钮上的字不跟着放大（不然「特大」档按钮自己会挤爆），用固定像素大小示意
+                    Text("A", fontSize = (15f * lv.scale / cur).sp, fontWeight = FontWeight.Bold, color = if (on) P.mintDeep else P.ink, maxLines = 1)
+                    Text(lv.name, fontSize = (12f / cur).sp, color = if (on) P.mintDeep else P.sub, maxLines = 1)
+                }
+            }
+        }
+        Gap(6.dp)
+        Text("当前「${FontSizes.nameOf(cur)}」：全 App 的文字按这个大小显示（在手机系统字号的基础上再调）。", fontSize = 13.sp, color = P.sub)
+        Gap()
+        Text("字体", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = P.ink)
+        Gap(6.dp)
         Text("全 App 的文字都会换成选中的字体。字体不在安装包里：选了哪个才联网下载，存在萌叮自己的目录里，卸载萌叮会一起删掉。",
             fontSize = 13.sp, color = P.sub)
         Gap()

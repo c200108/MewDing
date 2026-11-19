@@ -99,6 +99,8 @@ data class Settings(
     val gameVibrate: Boolean = true,
     /** 显示字体（ui/AppFonts.kt）：system = 系统默认，其他的要先联网下载 */
     val fontKey: String = "system",
+    /** 字号倍数（我的 → 显示字体 → 字号，ui/AppFonts.kt 的 FontSizes）：1 = 标准（原来的字号），全 App 的 sp 文字按它缩放 */
+    val fontScale: Float = 1f,
     /** 本地天气：用户主动同意获取大致位置后才打开（ui/Weather.kt） */
     val localWeather: Boolean = false,
     /** 首页动态背景（2D）：auto = 按时间 / 天气 / 节日自动换，否则固定某个场景（ui/LiveScene.kt 的 Scenes.ALL） */

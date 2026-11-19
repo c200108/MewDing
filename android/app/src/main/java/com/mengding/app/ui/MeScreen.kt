@@ -81,7 +81,7 @@ fun MeScreen() {
             NavRow(Ic.Speech, "宠物说话与叫声", "气泡里的话、多久说一次、点宠物时叫一声") { Nav.go("speech") }
             Divider()
             NavRow(Ic.Paint, "界面主题", "当前：${Themes.of(cfg.settings.uiTheme).name}") { Nav.go("theme") }
-            NavRow(Ic.TextFmt, "显示字体", "当前：${AppFonts.of(cfg.settings.fontKey).name}") { Nav.go("font") }
+            NavRow(Ic.TextFmt, "显示字体", "当前：${AppFonts.of(cfg.settings.fontKey).name} · 字号${FontSizes.nameOf(cfg.settings.fontScale)}") { Nav.go("font") }
             Divider()
             NavRow(Ic.Image, "换桌面图标", "默认白猫或六只像素宠物") { Nav.go("icon") }
             Divider()

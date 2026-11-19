@@ -87,7 +87,11 @@ fun MengDingTheme(content: @Composable () -> Unit) {
             labelSmall = base0.labelSmall.withFont(),
         )
     } ?: base0
-    androidx.compose.runtime.CompositionLocalProvider(LocalPalette provides p, LocalUiTheme provides ui, LocalMdStyle provides MdStyles.of(cfg.settings.uiStyle)) {
+    // 字号（我的 → 显示字体 → 字号）：在系统字号的基础上再乘一个倍数，所有 sp 文字一起变，dp 布局不变
+    val den = androidx.compose.ui.platform.LocalDensity.current
+    val scaled = androidx.compose.ui.unit.Density(den.density, den.fontScale * FontSizes.clamp(cfg.settings.fontScale))
+    androidx.compose.runtime.CompositionLocalProvider(LocalPalette provides p, LocalUiTheme provides ui, LocalMdStyle provides MdStyles.of(cfg.settings.uiStyle),
+        androidx.compose.ui.platform.LocalDensity provides scaled) {
         MaterialTheme(colorScheme = scheme, typography = type, content = content)
     }
 }
