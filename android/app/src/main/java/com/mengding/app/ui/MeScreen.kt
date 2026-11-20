@@ -791,7 +791,16 @@ fun ThemePage() {
                 Pill(label, !on3d && cfg.settings.homeScene == k) { setS { it.copy(homeScene = k, home3d = false) } }
             }
         }
-        // 「特殊场景」只有 HD-2D 一种风格，不再出风格选择
+        // 「特殊场景」只有 HD-2D 一种风格，不再出风格选择；选了特殊场景才出「开启遥控杆」
+        if (com.mengding.app.unity.UnityHost.supported && cfg.settings.home3d) {
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("开启遥控杆", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = P.ink)
+                    Text("在小镇和宠物部屋里用 360° 遥控杆控制带出门的宠物行走", fontSize = 12.sp, color = P.sub)
+                }
+                MdSwitch(cfg.settings.joystick, onChange = { on -> setS { it.copy(joystick = on) }; toast(if (on) "遥控杆已开启，在场景左下角" else "遥控杆已关闭") })
+            }
+        }
         StylePicker(cfg.settings.uiStyle)
         SectionTitle("界面主题")
         Themes.all.forEach { t ->

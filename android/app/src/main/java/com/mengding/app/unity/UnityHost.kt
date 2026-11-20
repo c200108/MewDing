@@ -192,6 +192,9 @@ object UnityHost {
     /** feed / drink / wardrobe / spin / sleep / pet_tap；id 为空时自动生成 */
     fun command(name: String, id: String? = null) = send(op(name).put("id", id ?: nextId(name)))
 
+    /** 遥控杆（4.0.22）：x 右、y 上，长度 0~1；按住时反复发，松手发 0（Unity 那边 0.4 秒收不到就自己停） */
+    fun stick(x: Float, y: Float) = send(op("stick").put("x", x.toDouble()).put("y", y.toDouble()))
+
     /** 让宠物走到某件家具（热区编号，比如 food_bowl）旁边等着 */
     fun goTo(hotspot: String) = send(op("goto").put("text", hotspot).put("id", nextId("goto")))
 

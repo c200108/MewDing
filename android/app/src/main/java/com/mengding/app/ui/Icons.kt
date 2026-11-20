@@ -201,6 +201,12 @@ object Ic {
         moveTo(9f, 4f); lineTo(15f, 4f); moveTo(10f, 4f); lineTo(10f, 10f); lineTo(7f, 14f); lineTo(17f, 14f); lineTo(14f, 10f); lineTo(14f, 4f)
         moveTo(12f, 14f); lineTo(12f, 20.5f)
     }
+    /** 折叠地图（场景名旁边：点场景名打开世界地图） */
+    val Map = icon("map") {
+        moveTo(3.5f, 6.5f); lineTo(9f, 4.5f); lineTo(15f, 6.5f); lineTo(20.5f, 4.5f); lineTo(20.5f, 17.5f)
+        lineTo(15f, 19.5f); lineTo(9f, 17.5f); lineTo(3.5f, 19.5f); close()
+        moveTo(9f, 4.5f); lineTo(9f, 17.5f); moveTo(15f, 6.5f); lineTo(15f, 19.5f)
+    }
     val Trash = icon("trash") {
         moveTo(4.5f, 6.5f); lineTo(19.5f, 6.5f); moveTo(9.5f, 6.5f); lineTo(9.5f, 4f); lineTo(14.5f, 4f); lineTo(14.5f, 6.5f)
         moveTo(6.5f, 6.5f); lineTo(7.5f, 20f); lineTo(16.5f, 20f); lineTo(17.5f, 6.5f)

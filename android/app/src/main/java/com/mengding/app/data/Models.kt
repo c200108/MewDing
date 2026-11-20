@@ -109,6 +109,8 @@ data class Settings(
     val home3d: Boolean = true,
     /** 特殊场景（Unity 首页）的风格：只剩 hd2d（4.0.13 删了 voxel 微体素，老设置读入时由 Store.migrateConfig 换成 hd2d） */
     val sceneStyle: String = "hd2d",
+    /** 特殊场景里显示 360° 遥控杆，拖动控制带出门的宠物行走（我的 → 界面主题 → 首页动态背景 → 特殊场景下的开关；默认关） */
+    val joystick: Boolean = false,
     /** 首页 2D 场景说话气泡的样式：cream 奶油可爱 / comic 卡通漫画 / line 简约线条 / ink 国漫水墨 / pixel 像素复古（ui/SceneBubble.kt） */
     val bubbleStyle: String = "cream",
     /** 已经看过的新手轻提示（按页面记：home / notes / shop / games / room / floating） */

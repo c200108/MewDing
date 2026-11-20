@@ -32,20 +32,23 @@ object BubbleLayout {
         w: Float, h: Float, tail: Float, gap: Float, corner: Float,
         minX: Float, minY: Float, maxX: Float, maxY: Float,
     ): BubblePlace {
-        fun clampX(x: Float) = x.coerceIn(minX, max(minX, maxX - w))
-        fun clampY(y: Float) = y.coerceIn(minY, max(minY, maxY - h))
+        // 4.0.22 修闪退：气泡比两个圆角还矮 / 窄时（单行字的气泡约 29dp 高，圆角 + 尾巴根余量 19dp × 2 = 38dp），
+        // 原来的 coerceIn(上限 < 下限) 直接抛 IllegalArgumentException —— 宠物站在画面上沿（小镇北边路、部屋后排）一说话就闪退。
+        // 范围是空的就取中点；坐标是 NaN / 无穷（宠物头顶位置还没报上来时的异常值）也不抛
+        fun clampX(x: Float) = safeIn(x, minX, max(minX, maxX - w))
+        fun clampY(y: Float) = safeIn(y, minY, max(minY, maxY - h))
         val top = headY - gap - tail - h
         val tipX = headX
         // 头顶：气泡大部分落在脸朝的那一侧
         if (top >= minY) {
             val pref = if (faceRight) headX - w * .28f else headX - w * .72f
             val left = clampX(pref)
-            return BubblePlace(left, top, TailDir.DOWN, tipX.coerceIn(left + corner, left + w - corner))
+            return BubblePlace(left, top, TailDir.DOWN, safeIn(tipX, left + corner, left + w - corner))
         }
         // 旁边：和头差不多高，尾巴横着指向嘴
         val midY = headY + petH * .22f
         val sideTop = clampY(midY - h / 2)
-        val tailY = midY.coerceIn(sideTop + corner, sideTop + h - corner)
+        val tailY = safeIn(midY, sideTop + corner, sideTop + h - corner)
         val rightLeft = headX + petW / 2 + gap + tail
         val leftLeft = headX - petW / 2 - gap - tail - w
         val fitsRight = rightLeft + w <= maxX
@@ -53,7 +56,14 @@ object BubbleLayout {
         if (faceRight && fitsRight || !faceRight && !fitsLeft && fitsRight) return BubblePlace(rightLeft, sideTop, TailDir.LEFT, tailY)
         if (fitsLeft) return BubblePlace(leftLeft, sideTop, TailDir.RIGHT, tailY)
         val left = clampX(if (faceRight) headX - w * .28f else headX - w * .72f)
-        return BubblePlace(left, minY, TailDir.DOWN, tipX.coerceIn(left + corner, left + w - corner))
+        return BubblePlace(left, minY, TailDir.DOWN, safeIn(tipX, left + corner, left + w - corner))
+    }
+
+    /** 不会抛异常的 coerceIn：lo > hi（范围是空的）取中点；v 是 NaN 取 lo */
+    fun safeIn(v: Float, lo: Float, hi: Float): Float = when {
+        lo > hi -> (lo + hi) / 2
+        v.isNaN() -> lo
+        else -> v.coerceIn(lo, hi)
     }
 }
 

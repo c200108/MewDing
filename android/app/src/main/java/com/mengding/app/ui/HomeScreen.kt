@@ -453,6 +453,7 @@ fun PetStage(
     val ctx = LocalContext.current
     val light = remember(key) { Scenes.load(ctx, key).lightText }
     val sceneTap = remember { SceneTap() }
+    var showMap by remember { mutableStateOf(false) }   // 世界地图（点场景名 / 宠物走进光圈）
     // 相框式场景：外层负责稳定比例、边缘和阴影，内层才接收场景触摸。
     // 这样滚动首页时不会把边框误判成宠物操作区域。
     Box(
@@ -494,18 +495,21 @@ fun PetStage(
                 Icon(if (musicOn) Ic.Sound else Ic.Mute, if (musicOn) "关掉背景音乐" else "打开背景音乐", Modifier.size(20.dp),
                     tint = if (musicOn) P.mintDeep else P.sub)
             }
-            // 世界地图入口（小喇叭右边）：萌叮小镇是地图上的一个地标，点它回来
-            var showMap by remember { mutableStateOf(false) }
-            // 宠物走进小镇边上的光圈（去其他大场景的入口）：打开世界地图，其他地方在地图上是「敬请期待」
+            // 4.0.22：左下角的「地图」按钮去掉，改成点场景名（收起时底部铭牌、展开时顶上「某某的家」）打开世界地图，见下面 SceneName
+            // 宠物走进小镇边上的光圈（去其他大场景的入口）：也打开世界地图，其他地方在地图上是「敬请期待」
             val mapReq = UnityHost.worldMapRequests
             var seenReq by remember { mutableStateOf(mapReq) }
             LaunchedEffect(mapReq) { if (mapReq != seenReq) { seenReq = mapReq; showMap = true } }
-            Text("地图", Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 8.dp).clip(RoundedCornerShape(17.dp))
-                .background(Color(0xCCFFFFFF)).clickable { showMap = true }.padding(horizontal = 12.dp, vertical = 7.dp),
-                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = P.mintDeep)
             if (showMap) WorldMapDialog(onDismiss = { showMap = false })
+            // 遥控杆（我的 → 界面主题 → 特殊场景 → 开启遥控杆）：左下角小喇叭上面；没带宠物出门时灰掉，按下提示
+            if (cfg.settings.joystick) {
+                val toast = toaster()
+                Joystick(Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 48.dp),
+                    size = if (expanded) 120.dp else 96.dp, enabled = showPet,
+                    onDisabledPress = { toast("先去宠物部屋带一只宠物出门，才能用遥控杆") }) { x, y -> UnityHost.stick(x, y) }
+            }
         }
-        if (expanded) ExpandedChrome(name, onMenu = onLong, onInventory = onInventory)
+        if (expanded) ExpandedChrome(name, onMenu = onLong, onInventory = onInventory, onMap = if (use3d) ({ showMap = true }) else null)
         else {
         // 名字和状态放在半透明小底上，什么背景都看得清
         Column(Modifier.align(Alignment.TopStart).padding(10.dp).clip(RoundedCornerShape(14.dp))
@@ -526,13 +530,19 @@ fun PetStage(
         }
         }
         // 相框铭牌把场景和首页其它卡片分开，也让当前场景始终可识别（全屋横屏时顶上已经有「某某的家」，不再挂）。
-        if (!expanded) Text(
-            if (use3d) (if (UnityHost.inPetRoom) "宠物部屋" else "萌叮小镇") else Scenes.ALL[key] ?: key,
+        // HD-2D：铭牌就是地图入口（带小地图图标），点它打开世界地图
+        if (!expanded) Row(
             Modifier.align(Alignment.BottomCenter).padding(bottom = 3.dp)
                 .clip(RoundedCornerShape(8.dp)).background(Color(0xDDFFF3D8))
-                .padding(horizontal = 12.dp, vertical = 2.dp),
-            fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF704636),
-        )
+                .then(if (use3d) Modifier.clickable { showMap = true } else Modifier)
+                .padding(horizontal = 12.dp, vertical = if (use3d) 4.dp else 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (use3d) { Icon(Ic.Map, "打开地图", Modifier.size(13.dp), tint = Color(0xFF704636)); Spacer(Modifier.width(4.dp)) }
+            Text(if (use3d) (if (UnityHost.inPetRoom) "宠物部屋" else "萌叮小镇") else Scenes.ALL[key] ?: key,
+                fontSize = if (use3d) 11.sp else 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF704636))
+            if (use3d) Text(" ›", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF704636))
+        }
     }
 }
 
@@ -754,14 +764,21 @@ private fun FrameMask(modifier: Modifier) {
 
 /** 全场景：卧室 + 客厅 + 庭院 / 露台的控件层。竖屏下一次看到一两个房间，左右拖动看全屋，双指缩放。 */
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.ExpandedChrome(name: String, onMenu: () -> Unit, onInventory: (String) -> Unit) {
+private fun androidx.compose.foundation.layout.BoxScope.ExpandedChrome(name: String, onMenu: () -> Unit, onInventory: (String) -> Unit,
+                                                                       onMap: (() -> Unit)? = null) {
     var hint by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { delay(4000); hint = false }
     Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
         RoomChip("‹ 收起") { UnityHost.collapse() }
         Spacer(Modifier.weight(1f))
-        Text(if (UnityHost.inPetRoom) "${name}的宠物屋" else "${name}的家", Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xCCFFFFFF)).padding(horizontal = 12.dp, vertical = 5.dp),
-            fontSize = 14.sp, fontWeight = FontWeight.Bold, color = P.ink)
+        // 顶上的场景名：HD-2D 下点它打开世界地图（左边小地图图标 + 右边 › 提示能点）
+        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xCCFFFFFF))
+            .then(if (onMap != null) Modifier.clickable { onMap() } else Modifier)
+            .padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (onMap != null) { Icon(Ic.Map, "打开地图", Modifier.size(16.dp), tint = P.mintDeep); Spacer(Modifier.width(5.dp)) }
+            Text(if (UnityHost.inPetRoom) "${name}的宠物屋" else "${name}的家", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = P.ink)
+            if (onMap != null) Text(" ›", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = P.sub)
+        }
         Spacer(Modifier.weight(1f))
         RoomChip("互动") { onMenu() }
     }
