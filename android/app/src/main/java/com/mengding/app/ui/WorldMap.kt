@@ -55,7 +55,13 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /** 世界地图上的一个地标（坐标是地图像素，原点左上） */
-data class WorldLandmark(val id: String, val kind: String, val name: String, val x: Float, val y: Float, val playable: Boolean)
+/** scene = 能去的地标对应的 HD-2D 场景 id（rikatown → 小镇 RikaTown，pineforest → 松果林地）；不能去的为空 */
+data class WorldLandmark(val id: String, val kind: String, val name: String, val x: Float, val y: Float, val playable: Boolean, val scene: String = "") {
+    /** Unity 里的场景 id（landmarks.json 里小镇写的是小写 rikatown） */
+    val unityScene: String get() = if (scene.equals("rikatown", ignoreCase = true)) "RikaTown" else scene
+    /** 现在是不是在这里（宠物部屋算在小镇里） */
+    fun isHere(current: String): Boolean = playable && unityScene == (if (current == "PetRoom") "RikaTown" else current)
+}
 
 /** 地图的平移缩放：scale = 屏幕像素 / 地图像素；offset = 地图左上角在屏幕上的位置。纯计算，单测覆盖 */
 data class MapView(val scale: Float, val offset: Offset) {
@@ -95,10 +101,11 @@ data class MapView(val scale: Float, val offset: Offset) {
 
 /**
  * 世界地图（HD-2D 首页左下角的「地图」）：tools/hd2d/world_gen.py 离线生成的像素世界，打在 assets/hd2d/worldmap.pak 里，
- * 第一次打开时和小镇的资源包一样解到私有目录。双指缩放、拖动；点「萌叮小镇」回到首页小镇，其他地标先「敬请期待」。
+ * 第一次打开时和小镇的资源包一样解到私有目录。双指缩放、拖动；点能去的地标（萌叮小镇、4.0.23 起松果林地）就过去，
+ * 已经在那里就关地图；其他地标先「敬请期待」。
  */
 @Composable
-fun WorldMapDialog(onDismiss: () -> Unit) {
+fun WorldMapDialog(current: String = "RikaTown", onDismiss: () -> Unit, onGo: (String) -> Unit = {}) {
     val ctx = LocalContext.current
     // 提示条画在对话框里面（App 的 toast 在主窗口，会被对话框挡住）
     var hint by remember { mutableStateOf<Pair<String, Long>?>(null) }
@@ -115,7 +122,8 @@ fun WorldMapDialog(onDismiss: () -> Unit) {
                 val arr = JSONObject(File(dir, "landmarks.json").readText()).getJSONArray("landmarks")
                 val list = (0 until arr.length()).map { i ->
                     val o = arr.getJSONObject(i)
-                    WorldLandmark(o.getString("id"), o.getString("kind"), o.getString("name"), o.getDouble("x").toFloat(), o.getDouble("y").toFloat(), o.optBoolean("playable"))
+                    WorldLandmark(o.getString("id"), o.getString("kind"), o.getString("name"), o.getDouble("x").toFloat(), o.getDouble("y").toFloat(), o.optBoolean("playable"),
+                        if (o.isNull("scene")) "" else o.optString("scene"))
                 }
                 b.asImageBitmap() to list
             }.getOrNull()
@@ -125,7 +133,7 @@ fun WorldMapDialog(onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().background(Color(0xFF1D3B6E))) {
             val image = bmp
-            if (image != null) MapCanvas(image, marks, onTown = onDismiss, onSoon = { hint = "「${it.name}」敬请期待～" to System.nanoTime() })
+            if (image != null) MapCanvas(image, marks, current, onPick = { m -> onDismiss(); if (!m.isHere(current)) onGo(m.unityScene) }, onSoon = { hint = "「${it.name}」敬请期待～" to System.nanoTime() })
             else Text(if (failed) "地图加载失败，稍后再试" else "正在展开地图…", Modifier.align(Alignment.Center), color = Color.White, fontSize = 15.sp)
             hint?.let { (text, _) ->
                 Text(text, Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp).clip(RoundedCornerShape(20.dp))
@@ -147,13 +155,13 @@ fun WorldMapDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun MapCanvas(image: ImageBitmap, marks: List<WorldLandmark>, onTown: () -> Unit, onSoon: (WorldLandmark) -> Unit) {
+private fun MapCanvas(image: ImageBitmap, marks: List<WorldLandmark>, current: String, onPick: (WorldLandmark) -> Unit, onSoon: (WorldLandmark) -> Unit) {
     val mapSize = IntSize(image.width, image.height)
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
     var view by remember { mutableStateOf<MapView?>(null) }
     var minScale by remember { mutableFloatStateOf(1f) }
     val density = LocalDensity.current
-    val town = marks.firstOrNull { it.playable }
+    val town = marks.firstOrNull { it.isHere(current) } ?: marks.firstOrNull { it.playable }
     BoxWithConstraints(Modifier.fillMaxSize().onSizeChanged { sz ->
         viewSize = sz
         minScale = max(sz.width / mapSize.width.toFloat(), sz.height / mapSize.height.toFloat())
@@ -167,7 +175,7 @@ private fun MapCanvas(image: ImageBitmap, marks: List<WorldLandmark>, onTown: ()
         detectTapGestures { p ->
             val v = view ?: return@detectTapGestures
             val m = MapView.hit(marks, v, p, with(density) { 30.dp.toPx() }) ?: return@detectTapGestures
-            if (m.playable) onTown() else onSoon(m)
+            if (m.playable && m.unityScene.isNotEmpty()) onPick(m) else onSoon(m)
         }
     }) {
         val v = view ?: return@BoxWithConstraints
@@ -175,22 +183,22 @@ private fun MapCanvas(image: ImageBitmap, marks: List<WorldLandmark>, onTown: ()
             drawImage(image, dstOffset = IntOffset(v.offset.x.roundToInt(), v.offset.y.roundToInt()),
                 dstSize = IntSize((mapSize.width * v.scale).roundToInt(), (mapSize.height * v.scale).roundToInt()),
                 filterQuality = FilterQuality.None)
-            // 地标：小圆点 + 光圈（小镇金色，其他白色）
+            // 地标：小圆点 + 光圈（你在的地方金色，能去的浅金，其他白色）
             marks.forEach { m ->
                 val c = v.toScreen(Offset(m.x, m.y))
                 val r = 7.dp.toPx()
                 drawCircle(Color(0x88000000), r + 3.dp.toPx(), c)
-                drawCircle(if (m.playable) Color(0xFFF6C542) else Color.White, r, c)
+                drawCircle(if (m.isHere(current)) Color(0xFFF6C542) else if (m.playable) Color(0xFFFFE9A8) else Color.White, r, c)
                 drawCircle(Color(0xFF2A2233), r * .45f, c)
             }
         }
         // 地名：像素地图上用 App 的字体写（中文清楚），放在点的下面
         marks.forEach { m ->
             val c = v.toScreen(Offset(m.x, m.y))
-            Text(if (m.playable) "${m.name} · 你在这里" else m.name,
+            Text(if (m.isHere(current)) "${m.name} · 你在这里" else m.name,
                 Modifier.offset { IntOffset(c.x.roundToInt() - 60.dp.roundToPx(), c.y.roundToInt() + 12.dp.roundToPx()) }
                     .size(width = 120.dp, height = 24.dp),
-                color = if (m.playable) Color(0xFFFFE9A8) else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                color = if (m.isHere(current)) Color(0xFFFFE9A8) else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, Offset(1f, 1f), 3f)))
         }

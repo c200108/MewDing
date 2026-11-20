@@ -500,7 +500,7 @@ fun PetStage(
             val mapReq = UnityHost.worldMapRequests
             var seenReq by remember { mutableStateOf(mapReq) }
             LaunchedEffect(mapReq) { if (mapReq != seenReq) { seenReq = mapReq; showMap = true } }
-            if (showMap) WorldMapDialog(onDismiss = { showMap = false })
+            if (showMap) WorldMapDialog(current = UnityHost.scene, onDismiss = { showMap = false }, onGo = { UnityHost.gotoScene(it) })
             // 遥控杆（我的 → 界面主题 → 特殊场景 → 开启遥控杆）：左下角小喇叭上面；没带宠物出门时灰掉，按下提示
             if (cfg.settings.joystick) {
                 val toast = toaster()
@@ -539,7 +539,7 @@ fun PetStage(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (use3d) { Icon(Ic.Map, "打开地图", Modifier.size(13.dp), tint = Color(0xFF704636)); Spacer(Modifier.width(4.dp)) }
-            Text(if (use3d) (if (UnityHost.inPetRoom) "宠物部屋" else "萌叮小镇") else Scenes.ALL[key] ?: key,
+            Text(if (use3d) UnityHost.sceneTitle() else Scenes.ALL[key] ?: key,
                 fontSize = if (use3d) 11.sp else 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF704636))
             if (use3d) Text(" ›", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF704636))
         }
