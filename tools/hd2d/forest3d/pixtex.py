@@ -212,3 +212,9 @@ def swirl(h, w, rng):
     v = np.sin(th * 3 + r * 9) * .5 + .5
     v = v * .6 + (1 - r) * .5
     return ramp(np.clip(v, 0, 1), ['#3f8fd0', '#62b6e8', '#8fd6f2', '#c6f0fb', '#ffffff'])
+
+
+ROOF_BLUE = ['#152d4a', '#1d3f66', '#285684', '#3a70a3', '#5a92c2']
+ROOF_TERRA = ['#5a2414', '#7a341c', '#9c4826', '#bd6034', '#d77d45']
+PLASTER_WHITE = ['#a9a7a0', '#c4c1b8', '#d9d6cc', '#e9e6dc', '#f6f3ea']
+SANDT = ['#9c8762', '#b39d74', '#c9b488', '#dcc89b', '#ecdcb2']

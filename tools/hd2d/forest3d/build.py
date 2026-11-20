@@ -14,7 +14,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('out'); ap.add_argument('--seed', type=int, default=20261119)
 ap.add_argument('--samples', type=int, default=64); ap.add_argument('--res', default='1280x720')
 ap.add_argument('--cat', default=''); ap.add_argument('--fstop', type=float, default=0.9)
-ap.add_argument('--views', default='center'); ap.add_argument('--overview', action='store_true'); ap.add_argument('--noexport', action='store_true'); ap.add_argument('--norender', action='store_true')
+ap.add_argument('--views', default='center'); ap.add_argument('--overview', action='store_true'); ap.add_argument('--noexport', action='store_true'); ap.add_argument('--norender', action='store_true'); ap.add_argument('--fog', type=float, default=.85)
 A = ap.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:])   # 兼容 blender -b -P build.py -- <参数>
 OUT = os.path.abspath(A.out); TEX = os.path.join(OUT, 'tex'); os.makedirs(TEX, exist_ok=True)
 rng = np.random.default_rng(A.seed)
@@ -32,7 +32,14 @@ PATHS = [
     [(13.8, 1.2), (12.2, 5.2)],                                                                         # → 池塘码头
     [(-6, -1.4), (-6.4, 2.6), (-8.2, 5.6)],                                                              # → 树屋
     [(-12, -.7), (-12.4, 1.9)],                                                                         # → 护林员小屋门口
+    [(2.6, 1.6), (4.6, 6.6), (6.2, 11.0), (7.4, 15.2)],                                                  # → 水车磨坊
+    [(4.6, 6.6), (1.0, 10.5), (-4.0, 12.2)],                                                             # → 养蜂花田
+    [(-8.2, 5.6), (-9.6, 8.6), (-12.6, 9.6), (-15.0, 10.5)],                                            # 树屋 → 露营地
+    [(-15.0, 10.5), (-18.0, 12.0), (-20.5, 12.4)],                                                       # → 瞭望塔
+    [(-17.0, -1.3), (-18.2, 2.4)],                                                                       # → 菜园
 ]
+MILL = (7.4, 17.6, 10.5); CAMP = (-15.0, 10.6); GARDEN = (-18.2, 4.0); MEADOW = (-4.0, 13.6); TOWER = (-20.6, 14.2); WELL = (-3.4, 5.6)
+ANIMS, MARKS = [], []
 STREAM = [(12.5, 37), (11.6, 30), (10.4, 24), (10.8, 18.5), (12.0, 14.5), (12.4, 11.6),             # 后山 → 池塘
           (11.0, 8.4), (9.4, 4.5), (8.5, 0.5), (8.6, -3.1), (9.4, -7), (9.0, -12.5)]               # 池塘 → 前方出画
 def _chaikin(P, n=3):
@@ -50,9 +57,11 @@ CLEAR = (-2.0, -0.6, 2.6)
 CAT = (-0.9, -1.35)
 MUSH_RING = (-15.5, -4.6, 1.0)
 # 建筑地基（地形在这些圆内压平）：伐木屋、护林员小屋、树屋、松果杂货铺、蘑菇屋、光圈
-PADS = [(2.6, 3.6, 4.2), (-12.4, 4.2, 3.6), (-8.6, 7.6, 2.6), (18.0, .9, 3.4), (19.2, 8.6, 3.2), (21.4, 11.4, 2.0), (PORTAL[0], PORTAL[1], 2.6)]
+PADS = [(2.6, 3.6, 4.2), (-12.4, 4.2, 3.6), (-8.6, 7.6, 2.6), (18.0, .9, 3.4), (19.2, 8.6, 3.2), (21.4, 11.4, 2.0), (PORTAL[0], PORTAL[1], 2.6),
+        (MILL[0], MILL[1], 3.0), (CAMP[0], CAMP[1] + .6, 3.4), (GARDEN[0], GARDEN[1], 2.8), (MEADOW[0], MEADOW[1], 3.0), (TOWER[0], TOWER[1], 2.0), (WELL[0], WELL[1], 1.2)]
 VIEWS = dict(                                                # 样片机位：游戏相机（同角度）在各区域的取景中心
-    center=(0.4, 1.6), portal=(-16.5, 0.6), shop=(15.5, 0.8), pond=(14.5, 7.8), west=(-10.0, 4.0))
+    center=(0.4, 1.6), portal=(-16.5, 0.6), shop=(15.5, 0.8), pond=(14.5, 7.8), west=(-10.0, 4.0),
+    camp=(-16.0, 14.0), mill=(5.5, 15.0))
 
 def seg_dist(px, py, pts):
     d = np.full(np.shape(px), 1e9, np.float32)
@@ -87,9 +96,9 @@ clear = np.hypot(wx - CLEAR[0], wy - CLEAR[1]) < CLEAR[2] + wob * 1.2
 ground[clear] = PT.ramp(PT.fbm(GH, GW, rng) * .6 + .45, PT.GRASS)[clear]
 PT.flowers(ground, (pd > 1.0) & (sd > STREAM_HW + BANK + .3), rng, .0025)
 dirt = PT.ramp(PT.fbm(GH, GW, rng, (16, 4, 2)) * .7 + rng.random((GH, GW)) * .3, PT.DIRT)
-pm = pd < .78 + wob * .5
+pm = pd < 1.0 + wob * .5
 ground[pm] = dirt[pm]
-edge = (pd >= .78 + wob * .5) & (pd < 1.0 + wob * .5) & (rng.random((GH, GW)) < .5)
+edge = (pd >= 1.0 + wob * .5) & (pd < 1.25 + wob * .5) & (rng.random((GH, GW)) < .5)
 ground[edge] = PT.hexc(PT.GRASS[1])
 sand = PT.ramp(PT.fbm(GH, GW, rng, (8, 4, 2)) * .6 + rng.random((GH, GW)) * .4, PT.SAND)
 bm = sd < STREAM_HW + BANK + wob * .4
@@ -108,6 +117,7 @@ for _ in range(60):
     y, x = rng.integers(0, 64), rng.integers(0, 60); wv[y, x:x + 3] = PT.hexc('#cdeef5')
 PT.save(wv, os.path.join(TEX, 'water.png'))
 CD.make_all(TEX, rng)
+tile(PT.grass, 'grassfar')
 tile(PT.shingles, 'roof_red', 6, 8, PT.ROOF_RED); tile(PT.shingles, 'roof_teal', 6, 8, PT.ROOF_TEAL); tile(PT.shingles, 'roof_ochre', 6, 8, PT.ROOF_OCHRE)
 tile(PT.shingles, 'cone', 8, 10, PT.CONE); tile(PT.plaster, 'plaster'); tile(PT.plaster, 'plaster_pink', PT.PLASTER_PINK)
 tile(PT.planks, 'timber', 8, PT.TIMBER, size=(32, 32)); tile(PT.awning, 'awning', size=(32, 32)); tile(PT.swirl, 'portal', size=(64, 64))
@@ -158,6 +168,8 @@ M = dict(
     timber=mat('timber', 'timber'), awning=mat('awning', 'awning', rough=.9), mush2=mat('mush2', 'mush2', rough=.6),
     portal=mat('portal', 'portal', emit=(.45, .8, 1), emit_s=.7), glow=mat('glow', color=(.6, .9, 1), emit=(.55, .88, 1), emit_s=4),
     reed=mat('reed', 'reed', alpha_img=True, rough=.95, spec=.1), lily=mat('lily', color=(.2, .42, .2), rough=.6),
+    fire=mat('fire', color=(1, .55, .15), emit=(1, .5, .12), emit_s=10), grassfar=mat('grassfar', 'grassfar', rough=.95, spec=.1),
+    pinebb=mat('pinebb', 'pinebb', alpha_img=True, rough=.95, spec=.1), oakbb=mat('oakbb', 'oakbb', alpha_img=True, rough=.95, spec=.1),
 )
 
 
@@ -233,7 +245,7 @@ bpy.ops.object.transform_apply(scale=True, location=True)
 _hr = np.random.default_rng(A.seed + 1)
 hn = PT.fbm(96, 96, _hr, (32, 16)); hb = PT.fbm(96, 96, _hr, (48, 24))
 def rise(x, y):
-    return max(0, (y - 13) * .1) + max(0, (y - 22) * .3) + max(0, abs(x) - 22) * .32 + max(0, -y - 9) * .25
+    return max(0, (y - 13) * .1) + max(0, (y - 22) * .3) + max(0, abs(x) - 22) * .32 + max(0, -y - 9) * .1
 def _samp(a, x, y):
     return a[int(np.clip((y - Y0) / (Y1 - Y0) * 95, 0, 95)), int(np.clip((x - X0) / (X1 - X0) * 95, 0, 95))]
 def ground_z(x, y):
@@ -409,15 +421,15 @@ def branch_card(root, d, L, W, mname, roll=0.):
 
 
 def pine(x, y, s, r, lod=False):
-    z = ground_z(x, y); H_ = (4.6 + r.random() * 1.6) * s
+    z = ground_z(x, y); H_ = (3.2 + r.random() * 1.0) * s
     cyl('PineTrunk', x, y, z + H_ * .45, .2 * s, H_ * .9, M['bark'], verts=10, r2=.05 * s, bev=0)
     bpy.ops.mesh.primitive_cone_add(vertices=10, radius1=.6 * s, radius2=0, depth=H_ * .78, location=(x, y, z + .9 * s + H_ * .39))
     o = link(bpy.context.active_object); o.name = 'PineCore'; o.data.materials.append(M['needles']); smooth(o)
     mn = 'branch' if r.random() < .6 else 'branch2'
-    tiers = int(7 + r.integers(0, 2)) if lod else int(11 + r.integers(0, 3)); z0 = z + .75 * s
+    tiers = int(6 + r.integers(0, 2)) if lod else int(9 + r.integers(0, 3)); z0 = z + .75 * s
     for i in range(tiers):
         f = i / (tiers - 1); zz = z0 + (H_ - .9 * s) * f
-        L = (2.1 * (1 - f) ** .8 + .35) * s
+        L = (1.6 * (1 - f) ** .8 + .3) * s
         nb = int(max(4, 7 - f * 3)) if lod else int(max(5, 12 - f * 6)); off = r.random() * 6.28
         for j in range(nb):
             th = off + j / nb * 6.28 + r.normal(0, .15)
@@ -451,7 +463,7 @@ def oak(x, y, s, r):
         cyl('Branch', x + math.cos(a) * .35 * s, y + math.sin(a) * .35 * s, z + 1.8 * s, .07 * s, 1.0 * s, M['bark'], verts=6,
             rot=(math.cos(a) * -.7, math.sin(a) * .7, 0), bev=0)
     for k in range(int(r.integers(5, 8))):
-        cx, cy, cz = x + r.normal(0, .65) * s, y + r.normal(0, .65) * s, z + (2.3 + r.random() * 1.1) * s
+        cx, cy, cz = x + r.normal(0, .65) * s, y + r.normal(0, .65) * s, z + (1.9 + r.random() * .8) * s
         R = (.7 + r.random() * .4) * s
         ball('Crown', cx, cy, cz, R * .8, M['leaves'], sub=2, sz=.85)
         crown_cards(cx, cy, cz, R, r, mn, n=18, size=1.0 * s)
@@ -500,6 +512,9 @@ def stump(name, x, y, rad, h):
 
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'buildings.py'), encoding='utf-8').read())
 build_landmarks()
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extras.py'), encoding='utf-8').read())
+build_extras()
+FZ = far_terrain(); far_trees(FZ)
 
 # 撒树：拒绝采样，避开小路、水、建筑地基、空地；可走区内稀疏留出林间空地，外圈密林（远处用简化松树）
 tr = np.random.default_rng(A.seed + 7)
@@ -519,10 +534,10 @@ def outside(x, y):
 for _ in range(14000):
     x, y = tr.uniform(X0 + .5, X1 - .5), tr.uniform(Y0 + .5, Y1 - .5)
     o_ = outside(x, y)
-    dens = .9 if o_ > 0 else .16 + .5 * max(0, (y - 12) / 10) + .35 * max(0, (abs(x) - 17) / 6)
+    dens = .75 if o_ > 0 else .07 + .25 * max(0, (y - 14) / 8) + .2 * max(0, (abs(x) - 18) / 5)
     if WALK[2] - 3 < y < -3.5 and abs(x) < 21: dens *= .3                       # 前景少挡视线（近景只留零星虚化树叶）
     if tr.random() > dens: continue
-    if o_ == 0 and y < 12 and rad > 1 and (float(field(np.float32(x), np.float32(y))[0]) < 3.2 or pad_d(x, y) < 3.8): continue   # 路边、建筑前别挡
+    if o_ == 0 and rad > 1 and (float(field(np.float32(x), np.float32(y))[0]) < 3.6 or pad_d(x, y) < 4.2): continue   # 路边、建筑前别挡
     s = tr.uniform(.8, 1.25) * (1.15 if y > 6 else 1)
     rad = 1.35 * s
     if not free(x, y, rad): continue
@@ -634,7 +649,7 @@ def bake_and_join():
                 a, b = [(co.x, co.y), (co.y, co.z), (co.x, co.z)][[2, 0, 1].index(ax)] if False else ((co.y, co.z) if ax == 0 else (co.x, co.z) if ax == 1 else (co.x, co.y))
                 uvl.data[li].uv = (a * PPM / tsz, b * PPM / tsz)
         bc = o.matrix_world @ (sum((Vector(b) for b in o.bound_box), Vector()) / 8)
-        key = tuple(sorted(set(mats))) + ('c' + chunk_of(bc.x, bc.y),)
+        key = (o.name,) if o.name.startswith('Anim_') else tuple(sorted(set(mats))) + ('c' + chunk_of(bc.x, bc.y),)
         groups.setdefault(key, []).append(me)
         bpy.data.objects.remove(o, do_unlink=True)
     for key, mes in groups.items():
@@ -650,7 +665,11 @@ def bake_and_join():
             for p in me.polygons: p.material_index = remap[p.material_index] if remap else 0
             bm_.from_mesh(me)
         bm_.to_mesh(out); bm_.free()
-        ob = bpy.data.objects.new('Forest_' + '_'.join(key), out); COL.objects.link(ob)
+        ob = bpy.data.objects.new(key[0] if key[0].startswith('Anim_') else 'Forest_' + '_'.join(key), out); COL.objects.link(ob)
+        if key[0].startswith('Anim_'):                                          # 动画物体：原点移到中心（Unity 里绕自身转）
+            c = sum((v.co for v in out.vertices), Vector()) / len(out.vertices)
+            for v in out.vertices: v.co -= c
+            ob.location = c
         for me in mes: bpy.data.meshes.remove(me)
     tot = sum(len(o.data.vertices) for o in COL.objects if o.type == 'MESH')
     print('JOINED', len(groups), 'groups, verts', tot)
@@ -662,12 +681,23 @@ bpy.ops.object.light_add(type='SUN', rotation=(math.radians(48), math.radians(-2
 sun = link(bpy.context.active_object); sun.data.energy = 5.5; sun.data.color = (1, .93, .8); sun.data.angle = math.radians(3)
 S.world = bpy.data.worlds.new('Sky'); S.world.use_nodes = True
 bg = S.world.node_tree.nodes['Background']; bg.inputs['Color'].default_value = (.52, .68, .95, 1); bg.inputs['Strength'].default_value = .75
+# 远景空气透视：Mist 通道在合成里混一层蓝灰雾（Unity 里对应 RenderSettings.fog）
+S.view_layers[0].use_pass_mist = True
+ms = S.world.mist_settings; ms.start = 30; ms.depth = 140; ms.falloff = 'QUADRATIC'
+cng = bpy.data.node_groups.new('Comp', 'CompositorNodeTree'); S.compositing_node_group = cng
+cng.interface.new_socket('Image', in_out='OUTPUT', socket_type='NodeSocketColor')
+_rl = cng.nodes.new('CompositorNodeRLayers'); _go = cng.nodes.new('NodeGroupOutput')
+_mf = cng.nodes.new('ShaderNodeMath'); _mf.operation = 'MULTIPLY'; _mf.inputs[1].default_value = A.fog
+_mx = cng.nodes.new('ShaderNodeMix'); _mx.data_type = 'RGBA'; _mx.inputs[7].default_value = (.62, .74, .92, 1)
+cng.links.new(_rl.outputs['Mist'], _mf.inputs[0]); cng.links.new(_mf.outputs[0], _mx.inputs[0])
+cng.links.new(_rl.outputs['Image'], _mx.inputs[6]); cng.links.new(_mx.outputs[2], _go.inputs[0])
+S.render.compositor_device = 'CPU'
 
 bpy.ops.object.camera_add(location=(0, -17.5, 13.0))
 cam = link(bpy.context.active_object); S.camera = cam
 tgt = Vector((0.4, 1.6, 0)); d = tgt - cam.location
 cam.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
-cam.data.lens = 36
+cam.data.lens = 36; cam.data.clip_end = 300
 cam.data.dof.use_dof = True
 cam.data.dof.focus_distance = (Vector((CAT[0], CAT[1], .4)) - cam.location).length
 cam.data.dof.aperture_fstop = A.fstop
@@ -689,6 +719,7 @@ def export_unity():
     marks = [empty('M_Origin', (0, 0, 0)), empty('M_CamPos', cam.location.copy()), empty('M_CamTarget', tgt),
              empty('M_Sun', -sun_dir * 10), empty('M_Cat', (CAT[0], CAT[1], ground_z(*CAT))),
              empty('M_Focus', (CAT[0], CAT[1], ground_z(*CAT) + .5)),
+             *[empty(n, p) for n, p in MARKS],
              empty('M_Portal', (PORTAL[0], PORTAL[1], ground_z(*PORTAL) + .4)),
              empty('M_Spawn', (PORTAL[0] + 3.2, PORTAL[1] + .2, ground_z(PORTAL[0] + 3.2, PORTAL[1] + .2)))]
     for nm in ('Cat',):
@@ -705,7 +736,7 @@ def export_unity():
         if f != 'ground.png' or True: shutil.copy(os.path.join(TEX, f), td)
     hfov = math.degrees(cam.data.angle_x)
     json.dump(dict(hfov=hfov, fstop=A.fstop, ppm=PPM, seed=A.seed, walk=list(WALK), paths=[[list(p) for p in P] for P in PATHS], stream=[list(p) for p in STREAM], stream_hw=STREAM_HW, pond=list(POND), pads=[list(p) for p in PADS],
-                   bridge=[8.6, -3.1, 1.45, .7], trees=[[round(a, 2), round(b, 2), round(c, 2)] for a, b, c in placed], portal=list(PORTAL),
+                   bridge=[8.6, -3.1, 1.45, .7], anims=ANIMS, fog=dict(color=[.62, .74, .92], start=35, end=150), trees=[[round(a, 2), round(b, 2), round(c, 2)] for a, b, c in placed], portal=list(PORTAL),
                    mats=[dict(name=m.name, info=dict(tex=(next((n.image.name.rsplit('.', 1)[0] for n in m.node_tree.nodes if n.type == 'TEX_IMAGE'), None)),
                                            color=list(m.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value)[:3],
                                            rough=m.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value,
@@ -729,5 +760,5 @@ for vn in ([] if A.norender else A.views.split(',')):
     S.render.filepath = os.path.join(OUT, 'view_%s.png' % vn); bpy.ops.render.render(write_still=True); print('DONE', S.render.filepath, flush=True)
 if A.overview and not A.norender:
     t_ = Vector((0, 8, 0)); cam.location = Vector((0, -42, 46)); cam.rotation_euler = (t_ - cam.location).to_track_quat('-Z', 'Y').to_euler()
-    cam.data.lens = 30; cam.data.dof.use_dof = False
+    cam.data.lens = 30; cam.data.dof.use_dof = False; cam.data.clip_end = 400
     S.render.filepath = os.path.join(OUT, 'overview.png'); bpy.ops.render.render(write_still=True); print('DONE', S.render.filepath, flush=True)

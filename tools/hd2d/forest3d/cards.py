@@ -102,12 +102,59 @@ def reed(w, h, rng):
     return rgb, a
 
 
+def pine_bb(w, h, rng):
+    """远景整棵松树面片：一层层三角树冠 + 树干，限色像素"""
+    a = np.zeros((h, w), bool); shade = np.zeros((h, w), np.float32); cx = w / 2
+    a[int(h * .88):, int(cx - 1):int(cx + 2)] = True; shade[int(h * .88):, int(cx - 1):int(cx + 2)] = .05
+    tiers = 6
+    for k in range(tiers):
+        top = int(h * (.02 + k * .13)); bot = int(h * (.24 + k * .13)); hw = w * (.16 + .34 * (k + 1) / tiers)
+        for y in range(top, min(h, bot)):
+            t = (y - top) / max(1, bot - top); half = hw * t
+            for x in range(int(cx - half), int(cx + half) + 1):
+                if 0 <= x < w and rng.random() < .97 - .25 * abs(x - cx) / max(half, 1) ** 1:
+                    a[y, x] = True; shade[y, x] = .25 + .5 * t * (1 - (x - cx) / (2 * hw)) * .9 + rng.random() * .15
+    rgb = PT.ramp(np.clip(shade, 0, 1), ['#0f2a1c', '#173a24', '#204b2b', '#2c6034', '#3e7840'])
+    rgb[a & (shade < .1)] = H('#3a2a1c')
+    return rgb, a
+
+
+def oak_bb(w, h, rng):
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    n = PT.fbm(h, w, rng, (8, 4))
+    r = np.hypot((xs - w / 2) / (w * .48), (ys - h * .42) / (h * .4))
+    a = r < .9 + (n - .5) * .4
+    trunk = (abs(xs - w / 2) < 2) & (ys > h * .7); a |= trunk
+    shade = np.clip(.8 - ys / h * .6 + (n - .5) * .6, 0, 1)
+    rgb = PT.ramp(shade, ['#1c3a20', '#28502a', '#356532', '#467a3a', '#5e9446'])
+    rgb[trunk & (r >= .9)] = H('#3a2a1c')
+    return rgb, a
+
+
+def frond(w, h, rng):
+    """棕榈叶：u=0 叶柄 → u=1 叶尖；中脉 + 两侧斜向细长小叶"""
+    a = np.zeros((h, w), bool); shade = np.zeros((h, w), np.float32); cy = h / 2
+    for x in range(w):
+        t = x / (w - 1); a[int(cy), x] = True; shade[int(cy), x] = .2
+        if t < .08: continue
+        L = (h * .48) * np.sin(np.pi * min(1, t * 1.05)) ** .7
+        if x % 2 == 0:
+            for side in (-1, 1):
+                for k in range(int(L)):
+                    xx = x + int(k * .55); yy = int(cy + side * k)
+                    if 0 <= xx < w and 0 <= yy < h: a[yy, xx] = True; shade[yy, xx] = .45 + .45 * (1 - k / max(L, 1)) - .2 * t + rng.random() * .1
+    return PT.ramp(np.clip(shade, 0, 1), ['#1f4a1e', '#2d6426', '#3f7f2e', '#5a9a38', '#7db548']), a
+
+
 def make_all(dst, rng):
     import os
     save_rgba(*branch(64, 32, rng), os.path.join(dst, 'branch.png'))
     save_rgba(*branch(64, 32, rng, ['#1b3826', '#244a30', '#2f5d38', '#3d7240', '#52894a', '#6fa257']), os.path.join(dst, 'branch2.png'))
     save_rgba(*grass(32, 32, rng), os.path.join(dst, 'tuft.png'))
     save_rgba(*grass(32, 32, rng, True), os.path.join(dst, 'flowers.png'))
+    save_rgba(*pine_bb(48, 96, rng), os.path.join(dst, 'pinebb.png'))
+    save_rgba(*oak_bb(48, 64, rng), os.path.join(dst, 'oakbb.png'))
+    save_rgba(*frond(64, 32, rng), os.path.join(dst, 'frond.png'))
     save_rgba(*reed(32, 48, rng), os.path.join(dst, 'reed.png'))
     save_rgba(*fern(48, 24, rng), os.path.join(dst, 'fern.png'))
     save_rgba(*leafclump(48, 48, rng), os.path.join(dst, 'clump.png'))

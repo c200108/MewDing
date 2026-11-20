@@ -52,7 +52,7 @@ def window(x, y, z, face, w=.75, h=.95, shutter=None, flowers=False, r=None):
         box('Mull', x + sx * .06, y, z, .05, w, .05, M['timber'], bev=0)
 
 
-def house(cx, cy, w, d, floors=2, fh=2.0, roof='roof_red', wall='plaster', seed=0, jetty=.2, pitch=42, chimney=True, shutter='door'):
+def house(cx, cy, w, d, floors=2, fh=2.0, roof='roof_red', wall='plaster', seed=0, jetty=.2, pitch=42, chimney=True, shutter='door', timber=True, flat=False):
     """半木结构小楼（视频里的欧式小镇屋）：石基 + 每层抹灰墙 + 深色木筋（柱/梁/斜撑）+ 上层外挑 + 双坡瓦顶 + 山墙 + 烟囱"""
     r = np.random.default_rng(seed); z0 = ground_z(cx, cy)
     box('Plinth', cx, cy, z0 + .1, w + .3, d + .3, .55, M['stone'], bev=.06)
@@ -61,14 +61,14 @@ def house(cx, cy, w, d, floors=2, fh=2.0, roof='roof_red', wall='plaster', seed=
         jw, jd = w + jetty * f * 2, d + jetty * f * 2
         zf = base + f * fh
         box('Wall', cx, cy, zf + fh / 2, jw - .02, jd - .02, fh, mw, bev=0)
-        for zz in (zf + .08, zf + fh - .08):                                     # 地梁 + 顶梁
+        for zz in ((zf + .08, zf + fh - .08) if timber else ()):                 # 地梁 + 顶梁
             box('Beam', cx, cy, zz, jw + .1, jd + .1, .16, M['timber'], bev=.02)
         nx = max(2, round(jw / 1.15)); ny = max(2, round(jd / 1.15))
         px_ = [cx - jw / 2 + jw * i / nx for i in range(nx + 1)]
         py_ = [cy - jd / 2 + jd * i / ny for i in range(ny + 1)]
-        for x in px_:
+        for x in (px_ if timber else ()):
             for y in (cy - jd / 2 - .03, cy + jd / 2 + .03): box('Post', x, y, zf + fh / 2, .14, .1, fh, M['timber'], bev=.015)
-        for y in py_:
+        for y in (py_ if timber else ()):
             for x in (cx - jw / 2 - .03, cx + jw / 2 + .03): box('Post', x, y, zf + fh / 2, .1, .14, fh, M['timber'], bev=.015)
         bay = jw / nx; door_bay = nx // 2 if f == 0 else -1
         for i in range(nx):                                                       # 前墙：门 / 窗 / 斜撑
@@ -79,7 +79,7 @@ def house(cx, cy, w, d, floors=2, fh=2.0, roof='roof_red', wall='plaster', seed=
                 ball('Knob', bx + .28, fy - .1, zf + .95, .045, M['metal'], sub=2)
                 box('Canopy', bx, fy - .45, zf + 2.25 if fh > 2.3 else zf + 2.12, 1.4, .8, .07, M[roof], rot=(math.radians(-20), 0, 0), bev=.02)
                 box('Step', bx, fy - .45, z0 + .16, 1.2, .6, .26, M['stone'], bev=.04)
-            elif (i + f) % 2 == 0 or nx <= 3:
+            elif (i + f) % 2 == 0 or nx <= 3 or not timber:
                 window(bx, fy, zf + fh * .52, 'front', w=min(.8, bay * .55), h=min(1.0, fh * .45), shutter=sh, flowers=(f == 0 and r.random() < .7), r=r)
             else:                                                                 # 斜撑（X 形木筋）
                 L = math.hypot(bay, fh - .3); ang = math.atan2(fh - .3, bay)
@@ -91,7 +91,7 @@ def house(cx, cy, w, d, floors=2, fh=2.0, roof='roof_red', wall='plaster', seed=
     rh = math.tan(math.radians(pitch)) * jd / 2
     for sx in (-1, 1):
         gable_wall(cx + sx * jw / 2, cy, jd, top, rh, mw, sx)
-        box('GableBeam', cx + sx * (jw / 2 + .05), cy, top + rh * .45, .1, .12, rh * .9, M['timber'], bev=.01)
+        if timber: box('GableBeam', cx + sx * (jw / 2 + .05), cy, top + rh * .45, .1, .12, rh * .9, M['timber'], bev=.01)
         window(cx + sx * (jw / 2 + .06), cy, top + rh * .35, 'left' if sx < 0 else 'right', w=.45, h=.55)
     ridge = gable_roof(cx, cy, jw, jd, top, pitch, .45, M[roof], ox=.4)
     if chimney:
