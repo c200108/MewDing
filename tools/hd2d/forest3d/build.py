@@ -684,14 +684,15 @@ bg = S.world.node_tree.nodes['Background']; bg.inputs['Color'].default_value = (
 # 远景空气透视：Mist 通道在合成里混一层蓝灰雾（Unity 里对应 RenderSettings.fog）
 S.view_layers[0].use_pass_mist = True
 ms = S.world.mist_settings; ms.start = 30; ms.depth = 140; ms.falloff = 'QUADRATIC'
-cng = bpy.data.node_groups.new('Comp', 'CompositorNodeTree'); S.compositing_node_group = cng
-cng.interface.new_socket('Image', in_out='OUTPUT', socket_type='NodeSocketColor')
-_rl = cng.nodes.new('CompositorNodeRLayers'); _go = cng.nodes.new('NodeGroupOutput')
-_mf = cng.nodes.new('ShaderNodeMath'); _mf.operation = 'MULTIPLY'; _mf.inputs[1].default_value = A.fog
-_mx = cng.nodes.new('ShaderNodeMix'); _mx.data_type = 'RGBA'; _mx.inputs[7].default_value = (.62, .74, .92, 1)
-cng.links.new(_rl.outputs['Mist'], _mf.inputs[0]); cng.links.new(_mf.outputs[0], _mx.inputs[0])
-cng.links.new(_rl.outputs['Image'], _mx.inputs[6]); cng.links.new(_mx.outputs[2], _go.inputs[0])
-S.render.compositor_device = 'CPU'
+if hasattr(S, 'compositing_node_group'):                    # Blender 5 才有；4.x 导出时跳过（只影响渲染）
+    cng = bpy.data.node_groups.new('Comp', 'CompositorNodeTree'); S.compositing_node_group = cng
+    cng.interface.new_socket('Image', in_out='OUTPUT', socket_type='NodeSocketColor')
+    _rl = cng.nodes.new('CompositorNodeRLayers'); _go = cng.nodes.new('NodeGroupOutput')
+    _mf = cng.nodes.new('ShaderNodeMath'); _mf.operation = 'MULTIPLY'; _mf.inputs[1].default_value = A.fog
+    _mx = cng.nodes.new('ShaderNodeMix'); _mx.data_type = 'RGBA'; _mx.inputs[7].default_value = (.62, .74, .92, 1)
+    cng.links.new(_rl.outputs['Mist'], _mf.inputs[0]); cng.links.new(_mf.outputs[0], _mx.inputs[0])
+    cng.links.new(_rl.outputs['Image'], _mx.inputs[6]); cng.links.new(_mx.outputs[2], _go.inputs[0])
+    S.render.compositor_device = 'CPU'
 
 bpy.ops.object.camera_add(location=(0, -17.5, 13.0))
 cam = link(bpy.context.active_object); S.camera = cam
