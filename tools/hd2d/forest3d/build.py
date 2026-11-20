@@ -396,10 +396,11 @@ cabin(CABIN['x'], CABIN['y'], CABIN['w'], CABIN['d'], seed=A.seed)
 # ---- 参数化树 v3（对标参考视频：写实层次松树 + 叶簇阔叶树）
 # 面片（带透明的松枝 / 叶簇 / 草丛）按材质汇总成一个网格，保留自己的 UV，不参与盒投影
 CARDS = {}
-CHUNK = (20, 16)                                             # 进 Unity 按空间分块，视锥外的块不画
+CHUNK = (30, 24)                                             # 进 Unity 按空间分块，视锥外的块不画
 def chunk_of(x, y): return '%d%d' % (int((x - X0) // CHUNK[0]), int((y - Y0) // CHUNK[1]))
 def card(mname, p0, p1, p2, p3, uv=((0, 0), (1, 0), (1, 1), (0, 1))):
-    L = CARDS.setdefault((mname, chunk_of(p0[0], p0[1])), ([], [], []))
+    ck = ('F%d%d' % (int((p0[0] + 120) // 120), int((p0[1] + 60) // 120))) if mname in ('pinebb', 'oakbb') else chunk_of(p0[0], p0[1])
+    L = CARDS.setdefault((mname, ck), ([], [], []))   # 远景面片树按 120 米大块合并，近景 30×24 米一块（省绘制调用）
     b = len(L[0]); L[0].extend([tuple(p) for p in (p0, p1, p2, p3)]); L[1].append((b, b + 1, b + 2, b + 3)); L[2].extend(uv)
 
 
