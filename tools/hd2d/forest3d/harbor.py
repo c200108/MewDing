@@ -14,11 +14,15 @@ LAYOUT = r'''
 # ------------------------------------------------------------------ 珊瑚港布局（-y 朝相机；东边是海，西北是山坡小镇）
 X0, X1, Y0, Y1 = -30, 30, -12, 36
 WALK = (-24, 22, -9, 24)
-PORTAL = (-21.5, -1.6)                                       # 回松果林 / 小镇的光圈（西入口）
+PORTAL = (-22.0, 4.6)                                        # 西口光圈 → 松果林地
+PORTAL2 = (-20.5, -6.4)                                      # 西南口光圈 → 萌叮小镇
+TAVERN = (-11.8, -6.6)
 HL = (13.5, 24.5, 8.0)                                       # 东北岬角（灯塔）
 def shore_x(y): return 7 + 2.2 * np.sin(y * .22 + .6)
 PATHS = [
-    [(-21.5, -1.6), (-15, -1.0), (-9, -.4), (-4.5, -.6), (1.5, -.8), (5.2, -.6)],          # 入口 → 集市广场 → 海边木栈道
+    [(-22.0, 4.6), (-18.4, 2.2), (-15, -1.0), (-9, -.4), (-4.5, -.6), (1.5, -.8), (5.2, -.6)],   # 西口(松果林) → 集市广场 → 海边木栈道
+    [(-20.5, -6.4), (-17.2, -3.6), (-15, -1.0)],                                          # 西南口(小镇)
+    [(-11.8, -4.0), (-11.0, -2.2), (-9, -.4)],                                            # 酒馆门口
     [(-4.5, -.6), (-6.0, 4.2), (-6.4, 8.4), (-4.2, 12.6), (-6.8, 16.6)],                  # 广场 → 上坡街
     [(-9, -.4), (-12.6, 3.4), (-14.2, 8.0)],
     [(5.2, -.6), (4.6, 5.0), (4.0, 10.0), (2.8, 14.6), (5.6, 18.4), (9.5, 21.0), (13.5, 24.5)],  # 沿岸 → 岬角灯塔
@@ -27,8 +31,8 @@ PATHS = [
 STREAM = [(200, 200), (201, 201)]; STREAM_HW, BANK = .8, .38; POND = (200, 200, 1.0)
 CAT = (-3.2, -2.6)
 PADS = [(-12.2, 4.6, 3.0), (-6.2, 9.6, 3.0), (-11.4, 10.6, 2.8), (-1.4, 6.4, 2.8), (-9.6, 16.6, 3.0), (-2.6, 15.8, 2.6),
-        (-16.6, 13.0, 2.6), (1.4, 11.4, 3.4), (-4.5, -.6, 4.2), (16.2, 27.0, 2.6), (PORTAL[0], PORTAL[1], 2.6), (0.5, 17.4, 2.6)]
-VIEWS = dict(market=(-4.0, 1.4), pier=(6.5, 3.5), light=(12.0, 21.5), beach=(2.0, -5.0), hill=(-8.0, 11.0))
+        (-16.6, 13.0, 2.6), (1.4, 11.4, 3.4), (-4.5, -.6, 4.2), (16.2, 27.0, 2.6), (PORTAL[0], PORTAL[1], 2.6), (PORTAL2[0], PORTAL2[1], 2.6), (TAVERN[0], TAVERN[1], 3.4), (3.0, 1.4, 1.6), (0.5, 17.4, 2.6)]
+VIEWS = dict(center=(-3.0, 0.0), gate=(-17.0, -1.0), tavern=(-10.5, -4.0), market=(-4.0, 1.4), pier=(6.5, 3.5), light=(12.0, 21.5), beach=(2.0, -5.0), hill=(-8.0, 11.0))
 ANIMS, MARKS = [], []
 '''
 
@@ -133,6 +137,8 @@ exec(open(os.path.join(HERE_, 'buildings.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE_, 'extras.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE_, 'harbor_parts.py'), encoding='utf-8').read())
 build_harbor()
+exec(open(os.path.join(HERE_, 'harbor_extra.py'), encoding='utf-8').read())
+build_harbor_extra()
 FZ = far_terrain(); far_trees_sea(FZ)
 _tf = bpy.data.objects['TerrainFar']; _tf.data.materials.append(M['sandfar'])
 for _p in _tf.data.polygons:
@@ -172,6 +178,9 @@ body = body.replace("    fire=mat('fire',", """    sandfar=mat('sandfar', 'sandf
     coral_purple=mat('coral_purple', color=(.62, .38, .9), rough=.6), coral_teal=mat('coral_teal', color=(.25, .8, .7), rough=.6), coral_yellow=mat('coral_yellow', color=(.98, .85, .3), rough=.6),
     sail=mat('sail', color=(.96, .94, .88), rough=.9), hull_white=mat('hull_white', color=(.92, .92, .9), rough=.5), rope=mat('rope', color=(.72, .6, .42), rough=.9),
     fire=mat('fire',""", 1)
+body = body.replace("'PineForest.fbx'", "'CoralHarbor.fbx'").replace("'forest_meta.json'", "'harbor_meta.json'").replace("'pineforest_block.blend'", "'coralharbor_block.blend'")
+body = body.replace("portal=list(PORTAL),", "portal=list(PORTAL), portal2=list(PORTAL2), portal_targets=dict(M_Portal='pineforest', M_Portal2='rikatown'), sea=SEA, scene='coralharbor',")
+body = body.replace("fog=dict(color=[.62, .74, .92]", "fog=dict(color=[.66, .80, .93]")
 body = body.replace("__file__", "HERE_FILE_")
 HERE_FILE_ = os.path.join(HERE, 'build.py'); HERE_ = HERE
 sys.argv = sys.argv  # 参数原样交给 build.py 的 argparse
