@@ -78,7 +78,7 @@ plaza = np.hypot(wx + 4.5, wy + .6) < 4.2 + wob
 pm = (pd < 1.1 + wob * .4) | plaza
 ground[pm] = cob[pm]
 sand = PT.ramp(PT.fbm(GH, GW, rng, (8, 4, 2)) * .5 + rng.random((GH, GW)) * .35 + .1, PT.SANDT)
-beach = ld < 3.2 + wob * 1.2
+beach = (ld < 3.2 + wob * 1.2) | ((wy < -4.4 + wob * 1.5) & (wx > -9.5 + wob * 2))   # 南边一整片沙滩
 ground[beach & ~pm] = sand[beach & ~pm]
 wet = (ld < .6) & (ld > -1.5)
 ground[wet] = (sand[wet] * .78)
@@ -154,7 +154,7 @@ for gx_ in np.arange(WALK[0] - 3, WALK[1] + 3, STEP):
     for gy_ in np.arange(WALK[2] - 3, WALK[3] + 3, STEP):
         x, y = gx_ + gr.uniform(-.22, .22), gy_ + gr.uniform(-.22, .22)
         p = float(field(np.float32(x), np.float32(y))[0]); d = float(land_d(np.float32(x), np.float32(y)))
-        if p < 1.3 or d < 2.2 or pad_d(x, y) < .4 or math.hypot(x + 4.5, y + .6) < 4.6: continue
+        if p < 1.3 or d < 2.2 or (y < -3.8 and x > -10) or pad_d(x, y) < .4 or math.hypot(x + 4.5, y + .6) < 4.6: continue
         q = gr.random()
         if q < (.75 if d > 4 else .25): tuft(x, y, gr.uniform(.28, .5), gr, 'flowers' if gr.random() < .2 else 'tuft')
 '''

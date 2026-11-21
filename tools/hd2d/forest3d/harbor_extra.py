@@ -58,7 +58,7 @@ def gull_flock(cx, cy, cz, R, n, name, speed):
 
 def lighthouse_beam(x, y):
     zt = ground_z(x, y) + .6 + 7.2 + .75
-    parts = [box('Beam', x + s * 2.6, y, zt, 4.4, .25, .25, M['glow'], bev=0) for s in (-1, 1)]
+    parts = [box('Beam', x + s * 1.9, y, zt, 2.6, .12, .12, M['glow'], bev=0) for s in (-1, 1)]
     return join_anim(parts, 'Anim_LHBeam', [0, 0, 1], 40)
 
 
