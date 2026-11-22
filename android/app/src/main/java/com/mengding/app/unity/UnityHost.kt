@@ -59,7 +59,7 @@ object UnityHost {
     private fun applyScene(id: String) { if (id.isNotEmpty()) { scene = id; inPetRoom = id == "PetRoom" } }
 
     /** 场景显示名 */
-    fun sceneTitle(id: String = scene): String = when (id) { "PetRoom" -> "宠物部屋"; "pineforest" -> "松果林地"; "coralharbor" -> "珊瑚港"; else -> "萌叮小镇" }
+    fun sceneTitle(id: String = scene): String = when (id) { "PetRoom" -> "宠物部屋"; "pineforest" -> "松果林地"; "coralharbor" -> "珊瑚港"; "goldsands" -> "金沙原"; else -> "萌叮小镇" }
 
 
     // ---------- 4.0.24 小地图 ----------
