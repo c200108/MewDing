@@ -800,6 +800,13 @@ fun ThemePage() {
                 }
                 MdSwitch(cfg.settings.joystick, onChange = { on -> setS { it.copy(joystick = on) }; toast(if (on) "遥控杆已开启，在场景左下角" else "遥控杆已关闭") })
             }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("显示小地图", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = P.ink)
+                    Text("场景左上角显示整张地图缩略图、宠物位置、光圈和当前镜头框", fontSize = 12.sp, color = P.sub)
+                }
+                MdSwitch(cfg.settings.minimap, onChange = { on -> setS { it.copy(minimap = on) }; toast(if (on) "小地图已开启，在场景左上角" else "小地图已关闭") })
+            }
         }
         StylePicker(cfg.settings.uiStyle)
         SectionTitle("界面主题")

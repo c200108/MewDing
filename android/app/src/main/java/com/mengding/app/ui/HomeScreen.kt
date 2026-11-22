@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -485,10 +488,10 @@ fun PetStage(
         else LiveScene(key, species, action, outfits, rain = Weather.rainy(code), modifier = Modifier.fillMaxSize(), bubble = bubble,
             bubbleStyle = cfg.settings.bubbleStyle, tap = sceneTap)
         FrameMask(Modifier.matchParentSize())
-        // HD-2D 小镇：左下角的小喇叭，开关首页背景音乐
+        // HD-2D 小镇：小喇叭，开关首页背景音乐（4.0.24 从左下角挪到右上角：收起时在「萌度」下面，展开时在右上角原来「互动」的位置）
         if (use3d) {
             val musicOn = cfg.settings.homeMusic
-            Box(Modifier.align(Alignment.BottomStart).padding(8.dp).size(34.dp)
+            Box(Modifier.align(Alignment.TopEnd).padding(top = if (expanded) 12.dp else 44.dp, end = if (expanded) 12.dp else 10.dp).size(34.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xCCFFFFFF))
                 .clickable { Store.update { it.copy(settings = it.settings.copy(homeMusic = !musicOn)) } },
                 contentAlignment = Alignment.Center) {
@@ -501,15 +504,21 @@ fun PetStage(
             var seenReq by remember { mutableStateOf(mapReq) }
             LaunchedEffect(mapReq) { if (mapReq != seenReq) { seenReq = mapReq; showMap = true } }
             if (showMap) WorldMapDialog(current = UnityHost.scene, onDismiss = { showMap = false }, onGo = { UnityHost.gotoScene(it) })
+            // 4.0.24 小地图（我的 → 界面主题 → 特殊场景 → 显示小地图）：左上角，收起时在名字牌下面，展开时在「收起」下面
+            // 4.0.25：相框里（没展开）不显示小地图和遥控杆，展开后才有；小地图贴着左上角（只让开挖孔）
+            LaunchedEffect(cfg.settings.minimap, expanded) { UnityHost.setMiniMap(cfg.settings.minimap && expanded) }
+            if (cfg.settings.minimap && expanded) SceneMiniMap(Modifier.align(Alignment.TopStart)
+                .windowInsetsPadding(WindowInsets.displayCutout).padding(start = 4.dp, top = 4.dp),
+                maxW = 132.dp, maxH = 92.dp)
             // 遥控杆（我的 → 界面主题 → 特殊场景 → 开启遥控杆）：左下角小喇叭上面；没带宠物出门时灰掉，按下提示
-            if (cfg.settings.joystick) {
+            if (cfg.settings.joystick && expanded) {
                 val toast = toaster()
-                Joystick(Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 48.dp),
-                    size = if (expanded) 120.dp else 96.dp, enabled = showPet,
+                Joystick(Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 14.dp),
+                    size = 120.dp, enabled = showPet,
                     onDisabledPress = { toast("先去宠物部屋带一只宠物出门，才能用遥控杆") }) { x, y -> UnityHost.stick(x, y) }
             }
         }
-        if (expanded) ExpandedChrome(name, onMenu = onLong, onInventory = onInventory, onMap = if (use3d) ({ showMap = true }) else null)
+        if (expanded) ExpandedChrome(name, onInventory = onInventory, onMap = if (use3d) ({ showMap = true }) else null)
         else {
         // 名字和状态放在半透明小底上，什么背景都看得清
         Column(Modifier.align(Alignment.TopStart).padding(10.dp).clip(RoundedCornerShape(14.dp))
@@ -718,20 +727,43 @@ fun UnityStage(modifier: Modifier) {
             onRelease = { UnityHost.detach(it) },
         )
         if (cover) Box(Modifier.fillMaxSize().background(Color(0xFFBFDDF2)))
+        // 4.0.25：换大场景时的等待动画、传送扣萌点提示
+        TravelOverlay(Modifier.fillMaxSize())
+        TravelNotice(Modifier.fillMaxSize())
     }
 }
 
 /**
  * 装 Unity 画面的容器：第二根手指按下（双指缩放）时让外层的首页滚动别抢手势，两根手指的移动完整交给场景；
- * 单指拖动照旧可以滚动首页。
+ * 4.0.24 单指拖动视角：手指横着划（横向位移先超过触摸阈值、且比竖向大）就整段交给场景拖镜头；竖着划照旧滚动首页
+ * （全屏展开时外面没有滚动，单指怎么划都是拖镜头）。判断规则见 DragIntent，单测覆盖。
  */
 private class PinchFrame(c: android.content.Context) : android.widget.FrameLayout(c) {
+    private val slop = android.view.ViewConfiguration.get(c).scaledTouchSlop.toFloat()
+    private var downX = 0f; private var downY = 0f; private var decided = false
     override fun dispatchTouchEvent(e: android.view.MotionEvent): Boolean {
         when (e.actionMasked) {
-            android.view.MotionEvent.ACTION_POINTER_DOWN -> parent?.requestDisallowInterceptTouchEvent(true)
-            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> parent?.requestDisallowInterceptTouchEvent(false)
+            android.view.MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; decided = false }
+            android.view.MotionEvent.ACTION_POINTER_DOWN -> { decided = true; parent?.requestDisallowInterceptTouchEvent(true) }
+            android.view.MotionEvent.ACTION_MOVE -> if (!decided) when (DragIntent.of(e.x - downX, e.y - downY, slop)) {
+                DragIntent.Camera -> { decided = true; parent?.requestDisallowInterceptTouchEvent(true) }
+                DragIntent.Scroll -> decided = true
+                DragIntent.Undecided -> {}
+            }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> { decided = false; parent?.requestDisallowInterceptTouchEvent(false) }
         }
         return super.dispatchTouchEvent(e)
+    }
+}
+
+/** 单指在相框场景里划动：拖镜头还是滚首页（纯计算，单测覆盖） */
+enum class DragIntent { Undecided, Camera, Scroll;
+    companion object {
+        fun of(dx: Float, dy: Float, slop: Float): DragIntent {
+            val ax = kotlin.math.abs(dx); val ay = kotlin.math.abs(dy)
+            if (ax < slop && ay < slop) return Undecided
+            return if (ax > ay) Camera else Scroll
+        }
     }
 }
 
@@ -764,12 +796,13 @@ private fun FrameMask(modifier: Modifier) {
 
 /** 全场景：卧室 + 客厅 + 庭院 / 露台的控件层。竖屏下一次看到一两个房间，左右拖动看全屋，双指缩放。 */
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.ExpandedChrome(name: String, onMenu: () -> Unit, onInventory: (String) -> Unit,
+private fun androidx.compose.foundation.layout.BoxScope.ExpandedChrome(name: String, onInventory: (String) -> Unit,
                                                                        onMap: (() -> Unit)? = null) {
     var hint by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { delay(4000); hint = false }
     Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        RoomChip("‹ 收起") { UnityHost.collapse() }
+        // 4.0.25：「收起」挪到右下角并缩小，左上角留给小地图；这里留同宽的空位让场景名居中
+        Spacer(Modifier.width(if (onMap != null) 34.dp else 0.dp))
         Spacer(Modifier.weight(1f))
         // 顶上的场景名：HD-2D 下点它打开世界地图（左边小地图图标 + 右边 › 提示能点）
         Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0xCCFFFFFF))
@@ -780,8 +813,12 @@ private fun androidx.compose.foundation.layout.BoxScope.ExpandedChrome(name: Str
             if (onMap != null) Text(" ›", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = P.sub)
         }
         Spacer(Modifier.weight(1f))
-        RoomChip("互动") { onMenu() }
+        // 4.0.24：去掉右上角「互动」；这里留出小喇叭的位置，场景名保持居中
+        Spacer(Modifier.width(if (onMap != null) 34.dp else 0.dp))
     }
+    Text("收起", Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 14.dp).clip(RoundedCornerShape(10.dp))
+        .background(Color(0xCCFFFFFF)).clickable { UnityHost.collapse() }.padding(horizontal = 9.dp, vertical = 4.dp),
+        fontSize = 11.sp, color = P.ink)
     if (hint) Text("点家具试试 · 点门厅的门进宠物屋 · 双指放大", Modifier.align(Alignment.TopCenter).padding(top = 60.dp)
         .clip(RoundedCornerShape(10.dp)).background(Color(0x99141432)).padding(horizontal = 10.dp, vertical = 4.dp),
         fontSize = 12.sp, color = Color.White)

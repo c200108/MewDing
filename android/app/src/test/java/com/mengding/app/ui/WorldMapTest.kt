@@ -65,11 +65,12 @@ class WorldMapTest {
             assertFalse(PngGray.isGray(png))
             val arr = Json.parseToJsonElement(String(z.getInputStream(z.getEntry("landmarks.json")).readBytes(), Charsets.UTF_8)).jsonObject["landmarks"]!!.jsonArray
             val playable = arr.map { it.jsonObject }.filter { it["playable"]?.jsonPrimitive?.booleanOrNull == true }
-            // 4.0.23：萌叮小镇 + 松果林地两处能去
-            assertEquals(2, playable.size)
+            // 4.0.25：萌叮小镇、松果林地、珊瑚港三处能去（插画地图包 world_v2_pak.py）
+            assertEquals(3, playable.size)
             val byName = playable.associateBy { it["name"]!!.jsonPrimitive.content }
             assertEquals("rikatown", byName["萌叮小镇"]!!["scene"]!!.jsonPrimitive.content)
             assertEquals("pineforest", byName["松果林地"]!!["scene"]!!.jsonPrimitive.content)
+            assertEquals("coralharbor", byName["珊瑚港"]!!["scene"]!!.jsonPrimitive.content)
             assertTrue(arr.size >= 6)
         }
     }

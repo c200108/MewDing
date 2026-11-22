@@ -111,6 +111,8 @@ data class Settings(
     val sceneStyle: String = "hd2d",
     /** 特殊场景里显示 360° 遥控杆，拖动控制带出门的宠物行走（我的 → 界面主题 → 首页动态背景 → 特殊场景下的开关；默认关） */
     val joystick: Boolean = false,
+    /** 4.0.24：特殊场景左上角显示小地图（整张场景缩略图 + 宠物位置 + 光圈 / 主要建筑 + 当前镜头框；我的 → 界面主题 → 特殊场景下的开关；默认关） */
+    val minimap: Boolean = false,
     /** 首页 2D 场景说话气泡的样式：cream 奶油可爱 / comic 卡通漫画 / line 简约线条 / ink 国漫水墨 / pixel 像素复古（ui/SceneBubble.kt） */
     val bubbleStyle: String = "cream",
     /** 已经看过的新手轻提示（按页面记：home / notes / shop / games / room / floating） */

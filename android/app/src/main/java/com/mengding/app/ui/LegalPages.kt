@@ -139,7 +139,7 @@ fun ColumnScope.TermsBody() {
     Text("更新日期：${Legal.UPDATED}　生效日期：${Legal.EFFECTIVE}", fontSize = 12.sp, color = P.sub)
     Gap()
     TermsSection("一、协议双方", listOf(
-        "本协议是你与萌叮开发者（${Legal.DEVELOPER}，以下简称「我们」）之间关于使用萌叮软件的约定。",
+        "本协议是你与萌叮开发者（${if (Legal.DEVELOPER.isBlank()) "" else Legal.DEVELOPER + "，"}以下简称「我们」）之间关于使用萌叮软件的约定。",
         "请你在使用前仔细阅读本协议和《隐私政策》。你点「同意并继续」即表示已阅读并同意；如果不同意，可以点「不同意」，萌叮会退出且不会收集任何信息。",
         "未满 14 周岁的未成年人，请在父母或其他监护人陪同下阅读，并在监护人同意后使用。",
     ))
