@@ -28,8 +28,8 @@ import org.json.JSONObject
  * 首页特殊场景只有 HD-2D 一种风格（4.0.13 删了微体素）。
  *
  * Kotlin 管数据，Unity 管场景。两边只传 JSON，协议见 unity/Assets/Scripts/AndroidBridge.cs：
- *   发过去：pet / stats / env / feed / drink / wardrobe_open / wardrobe_close / goto / coins / spin / sleep / pet_tap / say / expand / collapse
- *   收回来：ready / ack / done / petted / prop_tap / wardrobe_opened / woken / expanded / collapsed / coins_landed …
+ *   发过去：pet / stats / env / feed / drink / wardrobe_open / wardrobe_close / goto / coins / spin / sleep / pet_tap / say / expand / collapse / goto_scene / portal_denied
+ *   收回来：ready / ack / done / petted / prop_tap / wardrobe_opened / woken / expanded / collapsed / coins_landed / scene_change / travel_begin / portal_request …
  * 带操作编号（id）的指令 Unity 只演一次；扣金币、记打卡都在 Kotlin 这边先做完，所以重发也不会重复扣。
  */
 object UnityHost {
@@ -58,10 +58,47 @@ object UnityHost {
     private fun applyScene(id: String) { if (id.isNotEmpty()) { scene = id; inPetRoom = id == "PetRoom" } }
 
     /** 场景显示名 */
-    fun sceneTitle(id: String = scene): String = when (id) { "PetRoom" -> "宠物部屋"; "pineforest" -> "松果林地"; else -> "萌叮小镇" }
+    fun sceneTitle(id: String = scene): String = when (id) { "PetRoom" -> "宠物部屋"; "pineforest" -> "松果林地"; "coralharbor" -> "珊瑚港"; else -> "萌叮小镇" }
 
-    /** 世界地图上点了能去的地标：让 Unity 换场景（淡出、重载、宠物站到入口） */
-    fun gotoScene(id: String) = send(op("goto_scene").put("text", id))
+    /** 世界地图上点了能去的地标（萌点已经扣过）：让 Unity 换场景（淡出、重载、宠物站到入口），同时盖上传送等待动画 */
+    fun gotoScene(id: String) { beginTrip(id); send(op("goto_scene").put("text", id)) }
+
+    /** 正在传送（换大场景）：首页在 Unity 画面上盖一层等待动画，新场景报 ready / scene_change 后揭开（4.0.25） */
+    data class Trip(val target: String, val title: String, val startedAt: Long, val arrivedAt: Long = 0L)
+    var trip by mutableStateOf<Trip?>(null)
+        private set
+    /** 传送相关的一句提示（萌点不够等），首页弹一下 */
+    var travelNotice by mutableStateOf<Pair<String, Long>?>(null)
+        private set
+
+    private fun beginTrip(id: String) {
+        if (id.isEmpty() || id == "PetRoom") return
+        val t = Trip(id, sceneTitle(id), android.os.SystemClock.uptimeMillis())
+        trip = t
+        // 兜底：Unity 一直没报到也别把画面一直盖着
+        main.postDelayed({ if (trip?.startedAt == t.startedAt) trip = null }, 20_000)
+    }
+
+    private fun arriveTrip() {
+        val t = trip ?: return
+        if (t.arrivedAt == 0L) trip = t.copy(arrivedAt = android.os.SystemClock.uptimeMillis())
+    }
+
+    /** 等待动画淡出完了，由界面调用 */
+    fun clearTrip() { trip = null }
+
+    /** 宠物走进去其他大场景的光圈：先扣 1 萌点再走；不够就告诉 Unity 别走（宠物退出光圈）并提示 */
+    private fun portalRequest(target: String) {
+        val cost = com.mengding.app.logic.Travel.cost(byMap = false, target = target)
+        val err = com.mengding.app.logic.Travel.pay(com.mengding.app.MengDingApp.app, cost, byMap = false)
+        if (err == null) {
+            gotoScene(target)
+            if (cost > 0) travelNotice = "光圈传送 -$cost 萌点" to System.nanoTime()
+        } else {
+            send(op("portal_denied").put("text", err))
+            travelNotice = err to System.nanoTime()
+        }
+    }
     /** 小镇边上的光圈被走进去的次数（每次 +1，首页看到变化就打开世界地图） */
     var worldMapRequests by mutableStateOf(0)
         private set
@@ -251,13 +288,18 @@ object UnityHost {
             "ready" -> {
                 ready = true
                 if (evt.has("prop")) applyScene(evt.optString("prop"))
+                arriveTrip()
                 // Unity 刚起来（或场景重载）：把缓存的常态、数值、天气补发一遍；展开状态也同步过去
                 listOf(lastPet, lastStats, lastEnv).forEach { s -> s?.let { UnityPlayer.UnitySendMessage(BRIDGE, "OnMessage", it) } }
                 if (expanded) send(op("expand").put("source", "resume"))
             }
             "request_expand" -> expand(evt.optString("source", "door"))
             // HD-2D 小镇 ↔ 宠物部屋（走进光圈换场景）：相框铭牌和全屋标题跟着变
-            "scene_change" -> applyScene(evt.optString("prop"))
+            "scene_change" -> { applyScene(evt.optString("prop")); arriveTrip() }
+            // 4.0.25：Unity 自己开始换场景（比如走进光圈后直接切换）时先报一声，App 盖上等待动画
+            "travel_begin" -> beginTrip(evt.optString("text"))
+            // 4.0.25：宠物走进去相邻大场景的光圈，Unity 先问 App（扣 1 萌点）再走
+            "portal_request" -> portalRequest(evt.optString("text"))
             // 小镇边上的光圈（去其他大场景）：打开世界地图，其他大场景在地图上显示「敬请期待」
             "open_worldmap" -> worldMapRequests++
             // Unity 读不了立体小镇的烘焙资源：清掉缓存，首页换回 2D 动态场景

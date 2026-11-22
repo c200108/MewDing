@@ -718,6 +718,9 @@ fun UnityStage(modifier: Modifier) {
             onRelease = { UnityHost.detach(it) },
         )
         if (cover) Box(Modifier.fillMaxSize().background(Color(0xFFBFDDF2)))
+        // 4.0.25：换大场景时的等待动画、传送扣萌点提示
+        TravelOverlay(Modifier.fillMaxSize())
+        TravelNotice(Modifier.fillMaxSize())
     }
 }
 

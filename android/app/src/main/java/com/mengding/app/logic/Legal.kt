@@ -5,8 +5,8 @@ package com.mengding.app.logic
  * 开发主体、联系方式改 DEVELOPER / CONTACTS，其他页面自动跟着变；隐私政策网页 privacy.html 要手动同步。
  */
 object Legal {
-    /** 开发者 / 运营主体 */
-    const val DEVELOPER = "山东拾野信息技术有限公司"
+    /** 开发者 / 运营主体（暂时留空，确定后再填；留空时各页面只显示「开发主体：」） */
+    const val DEVELOPER = ""
     const val EMAIL = "mewding2026@gmail.com"
 
     /** 官方联系方式（用户服务协议、联系作者页共用；隐私政策网页里同步写了一份） */

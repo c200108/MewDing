@@ -15,12 +15,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -113,6 +117,8 @@ fun WorldMapDialog(current: String = "RikaTown", onDismiss: () -> Unit, onGo: (S
     var bmp by remember { mutableStateOf<ImageBitmap?>(null) }
     var marks by remember { mutableStateOf(emptyList<WorldLandmark>()) }
     var failed by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf<WorldLandmark?>(null) }
+    val points = com.mengding.app.data.Store.config.collectAsState().value.economy.points
     LaunchedEffect(Unit) {
         val ok = withContext(Dispatchers.IO) {
             runCatching {
@@ -133,17 +139,46 @@ fun WorldMapDialog(current: String = "RikaTown", onDismiss: () -> Unit, onGo: (S
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().background(Color(0xFF1D3B6E))) {
             val image = bmp
-            if (image != null) MapCanvas(image, marks, current, onPick = { m -> onDismiss(); if (!m.isHere(current)) onGo(m.unityScene) }, onSoon = { hint = "「${it.name}」敬请期待～" to System.nanoTime() })
+            // 4.0.25：点能去的地标先弹确认（世界地图传送 3 萌点），确认后扣萌点再走；已经在那里就直接关地图
+            if (image != null) MapCanvas(image, marks, current, onPick = { m -> if (m.isHere(current)) onDismiss() else confirm = m },
+                onSoon = { hint = "「${it.name}」敬请期待～" to System.nanoTime() })
             else Text(if (failed) "地图加载失败，稍后再试" else "正在展开地图…", Modifier.align(Alignment.Center), color = Color.White, fontSize = 15.sp)
             hint?.let { (text, _) ->
                 Text(text, Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp).clip(RoundedCornerShape(20.dp))
                     .background(Color(0xE62A2233)).padding(horizontal = 16.dp, vertical = 9.dp), color = Color.White, fontSize = 14.sp)
             }
-            // 顶栏：标题 + 关闭
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            confirm?.let { m ->
+                val cost = com.mengding.app.logic.Travel.cost(byMap = true, target = m.unityScene)
+                val enough = com.mengding.app.logic.Travel.canAfford(points, cost)
+                Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable { confirm = null }, contentAlignment = Alignment.Center) {
+                    Column(Modifier.padding(24.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xF22A2233)).clickable(enabled = false) {}
+                        .padding(horizontal = 22.dp, vertical = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("传送到「${m.name}」", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(if (cost > 0) "世界地图传送要花 $cost 萌点（现在有 $points）" else "免费", Modifier.padding(top = 6.dp),
+                            color = if (enough) Color(0xFFDDE2F6) else Color(0xFFFFB4A8), fontSize = 13.sp)
+                        if (cost > 0) Text("走到光圈里去相邻场景只要 ${com.mengding.app.logic.Travel.PORTAL_COST} 萌点", Modifier.padding(top = 2.dp),
+                            color = Color(0xFFB8BED6), fontSize = 11.sp)
+                        Row(Modifier.padding(top = 14.dp)) {
+                            Text("再想想", Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0x33FFFFFF)).clickable { confirm = null }
+                                .padding(horizontal = 18.dp, vertical = 9.dp), color = Color.White, fontSize = 14.sp)
+                            Box(Modifier.size(12.dp))
+                            Text(if (enough) "传送" else "萌点不够", Modifier.clip(RoundedCornerShape(14.dp))
+                                .background(if (enough) Color(0xFFF6C542) else Color(0x33FFFFFF))
+                                .clickable(enabled = enough) {
+                                    val err = com.mengding.app.logic.Travel.pay(ctx, cost, byMap = true)
+                                    confirm = null
+                                    if (err != null) hint = err to System.nanoTime() else { onDismiss(); onGo(m.unityScene) }
+                                }.padding(horizontal = 18.dp, vertical = 9.dp),
+                                color = if (enough) Color(0xFF2A2233) else Color(0xFFB8BED6), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+            // 顶栏：标题 + 关闭。4.0.25：横屏时右边有挖孔 / 手势区，按安全区留边，叉号不再被裁掉一半
+            Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xCC2A2233)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    Text("世界地图", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("双指缩放 · 拖动查看 · 点地标", color = Color(0xFFDDE2F6), fontSize = 11.sp)
+                    Text("晨风岛", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("萌叮群岛 · 双指缩放 · 点地标传送", color = Color(0xFFDDE2F6), fontSize = 11.sp)
                 }
                 Box(Modifier.weight(1f))
                 Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0xCC2A2233)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
