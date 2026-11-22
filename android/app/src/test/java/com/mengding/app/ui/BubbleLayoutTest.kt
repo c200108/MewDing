@@ -66,6 +66,24 @@ class BubbleLayoutTest {
         assertInside(l)
     }
 
+    /** 4.0.22 闪退：单行气泡（约 29 高）比两个圆角（19 × 2）还矮，宠物在画面上沿时走「旁边」分支，原来 coerceIn 空范围直接抛异常 */
+    @Test fun shortBubbleNearTopDoesNotThrow() {
+        for (h in listOf(10f, 20f, 29f, 37.9f)) for (w in listOf(20f, 30f, 60f, 150f)) for (face in listOf(true, false))
+            for (hx in listOf(6f, 60f, 180f, 300f, 354f)) for (hy in listOf(0f, 40f, 55f, 70f, 120f, 260f)) {
+                val p = place(hx, hy, face, w, h)
+                assertTrue("tailAt finite h=$h w=$w ($hx,$hy)", p.tailAt.isFinite())
+                assertTrue("left finite", p.left.isFinite() && p.top.isFinite())
+            }
+    }
+
+    @Test fun weirdInputsDoNotThrow() {
+        // 画布比气泡还小、头顶坐标是 NaN / 无穷（宠物位置还没报上来）
+        BubbleLayout.place(Float.NaN, Float.NaN, 40f, 48f, true, 150f, 29f, 8f, 2f, 19f, 0f, 0f, 100f, 20f)
+        BubbleLayout.place(Float.POSITIVE_INFINITY, -1e9f, 40f, 48f, false, 150f, 29f, 8f, 2f, 19f, 6f, 50f, 40f, 60f)
+        assertEquals(15f, BubbleLayout.safeIn(3f, 20f, 10f), .001f)
+        assertEquals(20f, BubbleLayout.safeIn(Float.NaN, 20f, 30f), .001f)
+    }
+
     @Test fun besideFallsBackToOtherSideAtEdge() {
         // 朝右但右边放不下 → 去左边
         val p = place(300f, 70f, face = true)

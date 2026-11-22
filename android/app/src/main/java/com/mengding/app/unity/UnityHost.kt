@@ -51,6 +51,17 @@ object UnityHost {
 
     /** 现在在宠物部屋场景里（顶上的标题、相框铭牌跟着变） */
     var inPetRoom by mutableStateOf(false)
+    /** 当前 HD-2D 场景 id（RikaTown / PetRoom / pineforest，4.0.23 起有松果林地）：铭牌、世界地图的「你在这里」跟着变 */
+    var scene by mutableStateOf("RikaTown")
+        private set
+
+    private fun applyScene(id: String) { if (id.isNotEmpty()) { scene = id; inPetRoom = id == "PetRoom" } }
+
+    /** 场景显示名 */
+    fun sceneTitle(id: String = scene): String = when (id) { "PetRoom" -> "宠物部屋"; "pineforest" -> "松果林地"; else -> "萌叮小镇" }
+
+    /** 世界地图上点了能去的地标：让 Unity 换场景（淡出、重载、宠物站到入口） */
+    fun gotoScene(id: String) = send(op("goto_scene").put("text", id))
     /** 小镇边上的光圈被走进去的次数（每次 +1，首页看到变化就打开世界地图） */
     var worldMapRequests by mutableStateOf(0)
         private set
@@ -192,6 +203,9 @@ object UnityHost {
     /** feed / drink / wardrobe / spin / sleep / pet_tap；id 为空时自动生成 */
     fun command(name: String, id: String? = null) = send(op(name).put("id", id ?: nextId(name)))
 
+    /** 遥控杆（4.0.22）：x 右、y 上，长度 0~1；按住时反复发，松手发 0（Unity 那边 0.4 秒收不到就自己停） */
+    fun stick(x: Float, y: Float) = send(op("stick").put("x", x.toDouble()).put("y", y.toDouble()))
+
     /** 让宠物走到某件家具（热区编号，比如 food_bowl）旁边等着 */
     fun goTo(hotspot: String) = send(op("goto").put("text", hotspot).put("id", nextId("goto")))
 
@@ -236,14 +250,14 @@ object UnityHost {
             "say" -> if (evt.optString("source") == "res") resSay = evt.optString("text") to System.currentTimeMillis()
             "ready" -> {
                 ready = true
-                if (evt.has("prop")) inPetRoom = evt.optString("prop") == "PetRoom"
+                if (evt.has("prop")) applyScene(evt.optString("prop"))
                 // Unity 刚起来（或场景重载）：把缓存的常态、数值、天气补发一遍；展开状态也同步过去
                 listOf(lastPet, lastStats, lastEnv).forEach { s -> s?.let { UnityPlayer.UnitySendMessage(BRIDGE, "OnMessage", it) } }
                 if (expanded) send(op("expand").put("source", "resume"))
             }
             "request_expand" -> expand(evt.optString("source", "door"))
             // HD-2D 小镇 ↔ 宠物部屋（走进光圈换场景）：相框铭牌和全屋标题跟着变
-            "scene_change" -> inPetRoom = evt.optString("prop") == "PetRoom"
+            "scene_change" -> applyScene(evt.optString("prop"))
             // 小镇边上的光圈（去其他大场景）：打开世界地图，其他大场景在地图上显示「敬请期待」
             "open_worldmap" -> worldMapRequests++
             // Unity 读不了立体小镇的烘焙资源：清掉缓存，首页换回 2D 动态场景

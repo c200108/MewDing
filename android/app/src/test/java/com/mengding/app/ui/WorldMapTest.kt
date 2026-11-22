@@ -65,10 +65,23 @@ class WorldMapTest {
             assertFalse(PngGray.isGray(png))
             val arr = Json.parseToJsonElement(String(z.getInputStream(z.getEntry("landmarks.json")).readBytes(), Charsets.UTF_8)).jsonObject["landmarks"]!!.jsonArray
             val playable = arr.map { it.jsonObject }.filter { it["playable"]?.jsonPrimitive?.booleanOrNull == true }
-            assertEquals(1, playable.size)
-            assertEquals("萌叮小镇", playable[0]["name"]!!.jsonPrimitive.content)
-            assertEquals("rikatown", playable[0]["scene"]!!.jsonPrimitive.content)
+            // 4.0.23：萌叮小镇 + 松果林地两处能去
+            assertEquals(2, playable.size)
+            val byName = playable.associateBy { it["name"]!!.jsonPrimitive.content }
+            assertEquals("rikatown", byName["萌叮小镇"]!!["scene"]!!.jsonPrimitive.content)
+            assertEquals("pineforest", byName["松果林地"]!!["scene"]!!.jsonPrimitive.content)
             assertTrue(arr.size >= 6)
         }
+    }
+
+    @Test fun landmarkSceneAndHere() {
+        val town = WorldLandmark("t", "town", "萌叮小镇", 0f, 0f, true, "rikatown")
+        val forest = WorldLandmark("f", "forest", "松果林地", 0f, 0f, true, "pineforest")
+        val lake = WorldLandmark("l", "lake", "鹿鸣潭", 0f, 0f, false)
+        assertEquals("RikaTown", town.unityScene)
+        assertEquals("pineforest", forest.unityScene)
+        assertTrue(town.isHere("RikaTown")); assertTrue(town.isHere("PetRoom")); assertFalse(town.isHere("pineforest"))
+        assertTrue(forest.isHere("pineforest")); assertFalse(forest.isHere("RikaTown"))
+        assertFalse(lake.isHere("RikaTown"))
     }
 }
