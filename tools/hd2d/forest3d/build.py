@@ -284,6 +284,30 @@ me = bpy.data.meshes.new('Water'); bm_.to_mesh(me); bm_.free()
 W = bpy.data.objects.new('Water', me); COL.objects.link(W); me.materials.append(M['water'])
 
 
+def water_colors(me, fn):
+    """给水面网格写顶点色（Unity 水面着色器读）：R,G = 流向（Blender 的 x,y，*.5+.5），B = 流速系数，A = 离岸距离（.5 + 米数/16，岸线处 .5）"""
+    ca = me.color_attributes.new('FlowCol', 'FLOAT_COLOR', 'POINT')
+    for v in me.vertices: ca.data[v.index].color = fn(v.co.x, v.co.y)
+
+
+def stream_flow(x, y):
+    best = (1e9, 0., 0.)
+    for (ax, ay), (bx, by) in zip(STREAM[:-1], STREAM[1:]):
+        vx, vy = bx - ax, by - ay; L2 = vx * vx + vy * vy or 1
+        t = min(1, max(0, ((x - ax) * vx + (y - ay) * vy) / L2))
+        d = math.hypot(x - ax - t * vx, y - ay - t * vy)
+        if d < best[0]:
+            sg = 1 if water_z(bx, by) <= water_z(ax, ay) else -1           # 顺着往低处流
+            L = math.sqrt(L2); best = (d, sg * vx / L, sg * vy / L)
+    d, fx, fy = best; bank = STREAM_HW - d; spd = 1.
+    pd_ = math.hypot(x - POND[0], y - POND[1])
+    if pd_ < POND[2] + .6: bank = max(bank, POND[2] - pd_); spd = .15             # 池塘里几乎不流
+    return (fx * .5 + .5, fy * .5 + .5, spd, min(1, max(0, .5 + bank / 16)))
+
+
+water_colors(me, stream_flow)
+
+
 # ---- 参数化伐木小屋 v2：一根根圆木叠墙、转角咬合、开门窗洞、山墙圆木、分层瓦片屋顶
 def logrow(name, x0, x1, y, z, r, rr, axis='x', gaps=()):
     """沿 x（或 y）方向的一根圆木，gaps = 需要断开的区间（门窗洞）"""
@@ -731,7 +755,7 @@ def export_unity():
         if (o.type == 'MESH' and o.name != 'Cat') or o.name.startswith('M_'): o.select_set(True)
     bpy.ops.export_scene.fbx(filepath=os.path.join(ue, 'PineForest.fbx'), use_selection=True, object_types={'MESH', 'EMPTY'},
                              apply_scale_options='FBX_SCALE_ALL', axis_forward='-Z', axis_up='Y', bake_space_transform=True,
-                             mesh_smooth_type='FACE', use_mesh_modifiers=True, path_mode='STRIP', embed_textures=False, add_leaf_bones=False)
+                             mesh_smooth_type='FACE', use_mesh_modifiers=True, colors_type='LINEAR', path_mode='STRIP', embed_textures=False, add_leaf_bones=False)
     import shutil, json
     td = os.path.join(ue, 'Textures'); os.makedirs(td, exist_ok=True)
     for f in os.listdir(TEX):

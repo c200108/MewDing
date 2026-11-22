@@ -126,10 +126,34 @@ def water_z(x, y): return SEA
 for v in T.data.vertices: v.co.z = ground_z(v.co.x, v.co.y)
 T.data.materials.append(M['ground']); smooth(T)
 
-# ---- 海面：一整片大水面（透光，能看见浅水里的珊瑚）
-bpy.ops.mesh.primitive_plane_add(size=1, location=(0, 45, SEA))
-W = link(bpy.context.active_object); W.name = 'Water'; W.scale = (240, 230, 1)
-bpy.ops.object.transform_apply(scale=True); W.data.materials.append(M['sea'])
+# ---- 海面：近处一张细网格（0.6 米一格，能做波浪起伏、潮汐和岸边浪花），外圈四块大面接到天边
+#      顶点色：A = 离岸距离（.5 + 米数/16；陆地下面也铺一段，涨潮时水线能往岸上走），B = 1 表示海（要起浪）
+M['pool'] = sea_mat(); M['pool'].name = 'pool'                   # 喷泉、潮池用的静水（不起浪、不涨潮）
+NX0, NX1, NY0, NY1, NS = -2.0, 44.0, -16.0, 44.0, .6
+bm_ = bmesh.new(); vid = {}
+xs_ = np.arange(NX0, NX1 + .01, NS); ys_ = np.arange(NY0, NY1 + .01, NS)
+for i in range(len(xs_) - 1):
+    for j in range(len(ys_) - 1):
+        q = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
+        if min(float(land_d(np.float32(xs_[a]), np.float32(ys_[b]))) for a, b in q) > 4: continue   # 离岸 4 米以上的陆地不铺
+        vs = []
+        for k in q:
+            if k not in vid: vid[k] = bm_.verts.new((xs_[k[0]], ys_[k[1]], SEA))
+            vs.append(vid[k])
+        bm_.faces.new(vs)
+me = bpy.data.meshes.new('Water'); bm_.to_mesh(me); bm_.free()
+W = bpy.data.objects.new('Water', me); COL.objects.link(W); me.materials.append(M['sea'])
+ca = me.color_attributes.new('FlowCol', 'FLOAT_COLOR', 'POINT')
+for v in me.vertices:
+    d = -float(land_d(np.float32(v.co.x), np.float32(v.co.y)))        # 海里为正
+    ca.data[v.index].color = (.5, .5, 1., min(1, max(0, .5 + d / 16)))
+for (cx_, cy_, sx_, sy_) in (((NX1 + 120) / 2, 45, 120 - NX1, 230), ((NX0 + NX1) / 2, (NY1 + 160) / 2, NX1 - NX0, 160 - NY1),
+                             ((NX0 + NX1) / 2, (NY0 - 70) / 2, NX1 - NX0, NY0 + 70)):
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(cx_, cy_, SEA))
+    Wf = link(bpy.context.active_object); Wf.name = 'WaterFar'; Wf.scale = (sx_, sy_, 1)
+    bpy.ops.object.transform_apply(scale=True); Wf.data.materials.append(M['sea'])
+    ca = Wf.data.color_attributes.new('FlowCol', 'FLOAT_COLOR', 'POINT')
+    for v in Wf.data.vertices: ca.data[v.index].color = (.5, .5, 1., 1.)
 '''
 
 PARTS = r'''

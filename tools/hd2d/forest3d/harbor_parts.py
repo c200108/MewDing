@@ -132,7 +132,7 @@ def stall(x, y, aw, r):
 def fountain(x, y):
     z = ground_z(x, y)
     cyl('FountainRim', x, y, z + .3, 1.5, .6, M['stone'], verts=28, bev=.05)
-    cyl('FountainWater', x, y, z + .5, 1.35, .05, M['sea'], verts=28, bev=0)
+    cyl('FountainWater', x, y, z + .5, 1.35, .05, M['pool'], verts=28, bev=0)
     cyl('FountainCol', x, y, z + 1.0, .2, 1.2, M['stone'], verts=12, bev=.03)
     cyl('FountainBowl', x, y, z + 1.6, .55, .2, M['stone'], verts=16, r2=.3, bev=.03)
     ball('Shell', x, y, z + 1.85, .2, M['coral_pink'], sub=2, sz=.6)
@@ -219,7 +219,7 @@ def build_harbor():
     lighthouse(16.2, 27.0)
     for k in range(5):
         a = k / 5 * 6.28 + .4; x, y = 12.8 + math.cos(a) * 3.2, 19.0 + math.sin(a) * 1.6
-        z = ground_z(x, y); cyl('TidePool', x, y, z + .03, .7, .05, M['sea'], verts=16, bev=0)
+        z = ground_z(x, y); cyl('TidePool', x, y, z + .03, .7, .05, M['pool'], verts=16, bev=0)
         for j in range(5): rock(x + math.cos(j) * .8, y + math.sin(j) * .6, .18, r)
         starfish(x + .3, y - .9, 1, M['coral_orange'])
     # 船坞
